@@ -11,6 +11,12 @@ from typing import List, Dict, Any
 import ollama
 from colorama import Fore, Style, init
 from tools import ToolExecutor
+from prompt_toolkit import PromptSession
+from prompt_toolkit.history import FileHistory 
+from rich.console import Console, Group
+from rich.markdown import Markdown
+from rich.live import Live
+from rich.text import Text
 
 # Initialize colorama for colored output
 init(autoreset=True)
@@ -22,15 +28,45 @@ class ChatBot:
     def __init__(self, model: str = "llama3.1", require_confirmation: bool = True):
         self.model = model
         self.conversation_history: List[Dict[str, Any]] = [
-             {
-                'role': 'system',
-                'content': 'You are a knowledgeable assistant with expertise in various domains. Before answering any question, carefully verify the accuracy of your information and provide well-researched, reliable responses.'
-            }
-        ]
+                {
+                    'role': 'system',
+                    'content': '''You are an expert coding assistant with access to the user's local development environment.
+
+  Core Capabilities:
+  - Read, write, and edit files in the project directory
+  - Execute system commands and tools available on the user's computer
+  - Provide well-researched, accurate technical responses
+
+  Behavior Guidelines:
+  - When users reference files, proactively read/write/edit them
+  - Auto-correct minor typos in file paths without mentioning them
+  - Treat short responses ("ok", "yes", "do it") as confirmation to proceed with your last proposal
+  - Use available system commands freely as needed for the task
+  - Verify technical accuracy before responding
+
+  Project Work Best Practices:
+  - ALWAYS explore the codebase first before making changes (check existing patterns, conventions, dependencies)
+  - Read relevant files to understand context before modifying code
+  - Maintain consistency with existing code style, architecture, and naming conventions
+  - Check for related files (tests, configs, docs) that may need updates
+  - Verify changes don't break existing functionality
+  - Provide clear explanations of what you're doing and why
+  - When unsure, ask clarifying questions before proceeding
+  - After changes, suggest testing steps or commands to verify the work
+
+  Error Handling:
+  - If a command fails, analyze the error and attempt to fix it
+  - Don't repeat the same failing command without modifications
+  - Look for logs, error messages, or stack traces to diagnose issues
+
+  You have full access to the local environment - use whatever tools and commands are necessary to help the user effectively.'''
+  }
+                ]
         self.tool_executor = ToolExecutor(require_confirmation=require_confirmation)
         self.ollama_client = ollama.Client(host='http://192.168.1.138')
         self.timer_running = False
         self.timer_text = ""
+        self.timer_print = True
         # Check if Ollama is available
         try:
             self.ollama_client.list()
@@ -44,19 +80,12 @@ class ChatBot:
         while self.timer_running:
             elapsed = time.time() - start_time
             # Print timer on the same line (carriage return)
-            self.timer_text = f"\r{Fore.BLUE}(⏱️ {elapsed:.1f}s) {Style.RESET_ALL}"            
-            print(self.timer_text, end="", flush=True)
+            self.timer_text = f"(⏱️ {elapsed:.1f}s)"
+            # if self.timer_print:
+            #     print(f"{Fore.CYAN}{self.timer_text}{Style.RESET_ALL}", end="", flush=True)
 
             time.sleep(0.1)  # Update every 100ms
 
-    def print_message(self, role: str, content: str):
-        """Print a formatted message"""
-        if role == "user":
-            print(f"\n{Fore.GREEN}You: {Style.RESET_ALL}{content}")
-        elif role == "assistant":
-            print(f"\n{Fore.CYAN}Assistant: {Style.RESET_ALL}{content}")
-        elif role == "tool":
-            print(f"\n{Fore.YELLOW}Tool Result: {Style.RESET_ALL}{content}")
 
     def chat(self, user_message: str) -> str:
         """Send a message and get response with tool support"""
@@ -71,39 +100,47 @@ class ChatBot:
         self.conversation_history.append({
             "role": "user",
             "content": user_message
-        })
+            })
 
         while True:
             # Call Ollama with conversation history and tools (with streaming)
             stream = self.ollama_client.chat(
-                model=self.model,
-                messages=self.conversation_history,
-                tools=self.tool_executor.tools_definition,
-                stream=True,
-                keep_alive="15m"  # Keep model in memory for 15 minutes
-            )
-
+                    model=self.model,
+                    messages=self.conversation_history,
+                    tools=self.tool_executor.tools_definition,
+                    stream=True,
+                    keep_alive="15m"  # Keep model in memory for 15 minutes
+                    )
             # Collect the streamed response
             full_content = ""
             tool_calls = []
-            is_first_chunk = True
-            for chunk in stream:
-                message = chunk.get("message", {})
-                
-                # Stream content if available
-                if message.get("content"):
-                    self.timer_running = False
-                    timer_thread.join()
-                    if is_first_chunk:
-                        is_first_chunk = False
-                        print(f"\n{Fore.CYAN}Claudette: {Style.RESET_ALL}", end="")
-                    content = message["content"]
-                    print(content, end="", flush=True)
-                    full_content += content
+            console = Console()
+            with Live(console=console, refresh_per_second=20) as live:
+                for chunk in stream:
 
-                # Collect tool calls if present
-                if message.get("tool_calls"):
-                    tool_calls = message["tool_calls"]
+                    message = chunk.get("message", {})
+
+                    # Stream content if available
+                    if message.get("content"):
+                        self.timer_running = False
+                        timer_thread.join()
+                        content = message["content"]
+                        full_content += content
+
+                    # Collect tool calls if present
+                    if message.get("tool_calls"):
+                        self.timer_running = False
+                        timer_thread.join()
+                        tool_calls = message["tool_calls"]
+
+                    # Combine timer, label and content on the same line
+                    display_text = Text()
+                    display_text.append(self.timer_text + " ", style="cyan")
+                    display_text.append("Claudette: ", style="cyan")
+                    md = Markdown(full_content, code_theme="dracula")
+                    live.update(Group(display_text, md))
+
+            #self.timer_print = True
             print()
             # Create the complete message for history
             assistant_message = {"role": "assistant", "content": full_content}
@@ -134,7 +171,7 @@ class ChatBot:
                 self.conversation_history.append({
                     "role": "tool",
                     "content": tool_result
-                })
+                    })
 
                 print(f"{Fore.YELLOW}Result: {tool_result[:200]}{'...' if len(tool_result) > 200 else ''}{Style.RESET_ALL}")
 
@@ -158,8 +195,9 @@ class ChatBot:
 
         while True:
             try:
-                user_input = input(f"{Fore.GREEN}You: {Style.RESET_ALL}").strip()
-
+                session = PromptSession(history=FileHistory("claudette_history.txt"))
+                print(f"{Fore.GREEN}You: {Style.RESET_ALL}", end="")
+                user_input = session.prompt().strip()
                 if not user_input:
                     continue
 
@@ -199,16 +237,16 @@ def load_config() -> Dict[str, Any]:
     except FileNotFoundError:
         # Return default configuration
         return {
-            "model": "llama3.1",
-            "require_confirmation": True
-        }
+                "model": "llama3.1",
+                "require_confirmation": True
+                }
     except Exception as e:
         print(f"{Fore.YELLOW}Warning: Could not load config.json: {e}{Style.RESET_ALL}")
         print(f"{Fore.YELLOW}Using default configuration.{Style.RESET_ALL}")
         return {
-            "model": "llama3.1",
-            "require_confirmation": True
-        }
+                "model": "llama3.1",
+                "require_confirmation": True
+                }
 
 
 def main():
@@ -217,9 +255,9 @@ def main():
 
     # Create and run the chatbot
     chatbot = ChatBot(
-        model=config.get("model", "llama3.1"),
-        require_confirmation=config.get("require_confirmation", True)
-    )
+            model=config.get("model", "llama3.1"),
+            require_confirmation=config.get("require_confirmation", True)
+            )
 
     chatbot.run()
 
