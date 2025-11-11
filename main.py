@@ -4,15 +4,19 @@ Claudette - Chat with Ollama LLM with tool support
 """
 
 import json
+import re
+import base64
 import sys
 import time
 import threading
+from pathlib import Path
 from typing import List, Dict, Any
 import ollama
 from colorama import Fore, Style, init
 from tools import ToolExecutor
 from prompt_toolkit import PromptSession
-from prompt_toolkit.history import FileHistory 
+from prompt_toolkit.history import FileHistory
+from prompt_toolkit.formatted_text import HTML 
 from rich.console import Console, Group
 from rich.markdown import Markdown
 from rich.live import Live
@@ -25,7 +29,7 @@ init(autoreset=True)
 class ChatBot:
     """Main chatbot class with Ollama integration"""
 
-    def __init__(self, model: str = "llama3.1", require_confirmation: bool = True):
+    def __init__(self, host: str,  model: str, image_mode: bool, require_confirmation: bool = True):
         self.model = model
         self.conversation_history: List[Dict[str, Any]] = [
                 {
@@ -63,10 +67,11 @@ class ChatBot:
   }
                 ]
         self.tool_executor = ToolExecutor(require_confirmation=require_confirmation)
-        self.ollama_client = ollama.Client(host='http://192.168.1.138')
-        self.timer_running = False
-        self.timer_text = ""
-        self.timer_print = True
+        self.host = host
+        self.ollama_client = ollama.Client(host=host)
+        self.start_time = time.time()
+        self.elapsed = time.time()
+        self.image_mode = image_mode
         # Check if Ollama is available
         try:
             self.ollama_client.list()
@@ -75,73 +80,89 @@ class ChatBot:
             print(f"Error details: {e}")
             sys.exit(1)
 
-    def _display_timer(self, start_time):
-        """Display elapsed time dynamically in a separate thread"""
-        while self.timer_running:
-            elapsed = time.time() - start_time
-            # Print timer on the same line (carriage return)
-            self.timer_text = f"(⏱️ {elapsed:.1f}s)"
-            # if self.timer_print:
-            #     print(f"{Fore.CYAN}{self.timer_text}{Style.RESET_ALL}", end="", flush=True)
+    def extract_and_validate_images(self, text: str):
+        """Extrait et valide les chemins d'images"""
 
-            time.sleep(0.1)  # Update every 100ms
+        # Pattern général pour chemins de fichiers
+        pattern = r'(?:^|\s)([./~]?[^\s]*\.(?:jpg|jpeg|png|gif|bmp|webp))(?:\s|$)'
+
+        potential_paths = re.findall(pattern, text, re.IGNORECASE)
+
+        valid_images = []
+
+        for path_str in potential_paths:
+            path = Path(path_str).expanduser()  # Gère ~/
+
+            # Vérifications
+            if path.exists() and path.is_file():
+                # Vérifier que c'est bien une image (optionnel)
+                if path.suffix.lower() in ['.jpg', '.jpeg', '.png', '.gif', '.bmp', '.webp']:
+                    valid_images.append(self.image_to_base64(str(path.absolute())))
+
+        return valid_images
 
 
+    def image_to_base64(self, image_path: str):
+        """Convertit une image en base64"""
+        with open(image_path, "rb") as image_file:
+            encoded = base64.b64encode(image_file.read()).decode('utf-8')
+        return encoded
+
+    # Utilisation
     def chat(self, user_message: str) -> str:
         """Send a message and get response with tool support"""
         # Start timer
-        self.start_time = time.time()
-        self.timer_running = True
-        timer_thread = threading.Thread(target=self._display_timer, args=(time.time(),), daemon=True)
-        timer_thread.start()
-        #timer_started = True
-
         # Add user message to history
-        self.conversation_history.append({
+        user_message = {
             "role": "user",
             "content": user_message
-            })
+        }
+        if self.image_mode:
+            images_path = self.extract_and_validate_images(user_message["content"])
+            user_message["images"] = images_path
+            print(f"Image found: {images_path}")
+            for image_path in images_path:
+                user_message["content"] = user_message["content"].replace(image_path, "")
+            print(f"Prompt: {user_message['content']}")
 
+        self.conversation_history.append(user_message)
+        self.start_time = time.time()
         while True:
             # Call Ollama with conversation history and tools (with streaming)
-            stream = self.ollama_client.chat(
+            if not self.image_mode:
+                stream = self.ollama_client.chat(
                     model=self.model,
                     messages=self.conversation_history,
                     tools=self.tool_executor.tools_definition,
                     stream=True,
                     keep_alive="15m"  # Keep model in memory for 15 minutes
-                    )
+                )
+            else:
+                stream = self.ollama_client.chat(
+                    model=self.model,
+                    messages=self.conversation_history,
+                    stream=True,
+                    keep_alive="15m"  # Keep model in memory for 15 minutes
+                )
             # Collect the streamed response
             full_content = ""
             tool_calls = []
             console = Console()
-            with Live(console=console, refresh_per_second=20) as live:
+            with Live(console=console, refresh_per_second=10) as live:
                 for chunk in stream:
-
+                    self.elapsed = time.time() - self.start_time
                     message = chunk.get("message", {})
-
-                    # Stream content if available
-                    if message.get("content"):
-                        self.timer_running = False
-                        timer_thread.join()
-                        content = message["content"]
+                    if content := message.get("content"):
                         full_content += content
-
-                    # Collect tool calls if present
-                    if message.get("tool_calls"):
-                        self.timer_running = False
-                        timer_thread.join()
+                        self.display_claudette_response(full_content, live)
+                    elif message.get("tool_calls"):
                         tool_calls = message["tool_calls"]
+                    else:
+                        self.display_claudette_response(full_content, live)
 
-                    # Combine timer, label and content on the same line
-                    display_text = Text()
-                    display_text.append(self.timer_text + " ", style="cyan")
-                    display_text.append("Claudette: ", style="cyan")
-                    md = Markdown(full_content, code_theme="dracula")
-                    live.update(Group(display_text, md))
+            self.display_claudette_response(full_content, live)
 
-            #self.timer_print = True
-            print()
+            print()  # Extra newline for spacing
             # Create the complete message for history
             assistant_message = {"role": "assistant", "content": full_content}
             if tool_calls:
@@ -152,9 +173,6 @@ class ChatBot:
 
             # Check if the model wants to use tools
             if not tool_calls:
-                # No tool calls, display final elapsed time and return
-                elapsed_time = time.time() - self.start_time
-                #print(f"\n{Fore.BLUE}⏱️  Total response time: {elapsed_time:.2f}s{Style.RESET_ALL}")
                 return full_content
 
             # Process tool calls
@@ -177,11 +195,25 @@ class ChatBot:
 
             # Continue the loop to get the next response from the model
 
+    def display_claudette_response(self, full_content: str, live: Live):
+
+        display_text = Text()
+        display_text.append(f"(⏱️ {self.elapsed:.1f}s) ", style="cyan")
+        if full_content:
+            display_text.append("Claudette: ", style="cyan")
+            md = Markdown(full_content, code_theme="dracula")
+            live.update(Group(display_text, md))
+        else:
+            display_text.append("Claudette: thinking...", style="dim cyan")
+            live.update(display_text)
+
     def run(self):
         """Run the interactive chat loop"""
         print(f"{Fore.CYAN}{'='*60}{Style.RESET_ALL}")
         print(f"{Fore.CYAN}Claudette - Chat with Tools{Style.RESET_ALL}")
         print(f"{Fore.CYAN}Model: {self.model}{Style.RESET_ALL}")
+        print(f"{Fore.CYAN}Host: {self.host}{Style.RESET_ALL}")
+        print(f"{Fore.CYAN}Image mode: {self.image_mode}{Style.RESET_ALL}")
         print(f"{Fore.CYAN}{'='*60}{Style.RESET_ALL}")
         print(f"\nAvailable tools:")
         print(f"  • Web Search (DuckDuckGo)")
@@ -196,8 +228,7 @@ class ChatBot:
         while True:
             try:
                 session = PromptSession(history=FileHistory("claudette_history.txt"))
-                print(f"{Fore.GREEN}You: {Style.RESET_ALL}", end="")
-                user_input = session.prompt().strip()
+                user_input = session.prompt(HTML("<ansigreen>You: </ansigreen>")).strip()
                 if not user_input:
                     continue
 
@@ -238,14 +269,18 @@ def load_config() -> Dict[str, Any]:
         # Return default configuration
         return {
                 "model": "llama3.1",
-                "require_confirmation": True
+                "require_confirmation": True,
+                "image_mode": False,
+                "host": "http://192.168.1.138"
                 }
     except Exception as e:
         print(f"{Fore.YELLOW}Warning: Could not load config.json: {e}{Style.RESET_ALL}")
         print(f"{Fore.YELLOW}Using default configuration.{Style.RESET_ALL}")
         return {
                 "model": "llama3.1",
-                "require_confirmation": True
+                "require_confirmation": True,
+                "image_mode": False,
+                "host": "http://192.168.1.138"
                 }
 
 
@@ -255,10 +290,11 @@ def main():
 
     # Create and run the chatbot
     chatbot = ChatBot(
-            model=config.get("model", "llama3.1"),
+        host=config.get("host", "http://192.168.1.138"),
+            model=config.get("model", "qwen3:30b"),
+            image_mode=config.get("image_mode", False),
             require_confirmation=config.get("require_confirmation", True)
             )
-
     chatbot.run()
 
 
