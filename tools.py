@@ -6,7 +6,7 @@ import os
 import subprocess
 import json
 from typing import Any, Dict, List
-from duckduckgo_search import DDGS
+from ddgs import DDGS
 
 
 class ToolExecutor:
@@ -131,6 +131,27 @@ class ToolExecutor:
         """Search the web using DuckDuckGo"""
         try:
             with DDGS() as ddgs:
+                # Try Instant Answers first (for queries like "current date", "2+2", etc.)
+                try:
+                    instant_answers = list(ddgs.answers(query))
+                    if instant_answers:
+                        formatted_answers = []
+                        for answer in instant_answers:
+                            # Format the instant answer
+                            text = answer.get('text', '')
+                            url = answer.get('url', '')
+                            if text:
+                                formatted_answers.append(f"Instant Answer: {text}")
+                                if url:
+                                    formatted_answers.append(f"Source: {url}")
+
+                        if formatted_answers:
+                            return "\n".join(formatted_answers)
+                except Exception:
+                    # If instant answers fail, continue to regular search
+                    pass
+
+                # Fall back to regular web search
                 results = list(ddgs.text(query, max_results=max_results))
 
             if not results:
