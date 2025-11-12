@@ -1,0 +1,94 @@
+  pip install mcp httpx httpx-sse langchain-ollama
+
+  Code pour Streamable HTTP (nouveau protocole) :
+
+  import asyncio
+  import httpx
+  from mcp import ClientSession
+  from langchain_ollama import ChatOllama
+  from typing import Dict, Any
+
+  class RemoteMCPClient:
+      def __init__(self, server_url: str, headers: Dict[str, str] = None):
+          self.server_url = server_url
+          self.headers = headers or {}
+          self.client = httpx.AsyncClient(headers=self.headers, timeout=30.0)
+          self.llm = ChatOllama(model="llama3.1:8b")
+
+      async def connect(self):
+          """Connexion au serveur MCP distant via Streamable HTTP"""
+          # Endpoint d'initialisation
+          response = await self.client.post(
+              f"{self.server_url}/initialize",
+              json={
+                  "protocolVersion": "2025-03-26",
+                  "capabilities": {
+                      "tools": {}
+                  }
+              }
+          )
+          return response.json()
+
+      async def list_tools(self):
+          """Liste les outils disponibles sur le serveur distant"""
+          response = await self.client.post(
+              f"{self.server_url}/tools/list",
+              json={}
+          )
+          return response.json()
+
+      async def call_tool(self, tool_name: str, arguments: Dict[str, Any]):
+          """Appelle un outil sur le serveur distant"""
+          response = await self.client.post(
+              f"{self.server_url}/tools/call",
+              json={
+                  "name": tool_name,
+                  "arguments": arguments
+              }
+          )
+          return response.json()
+
+      async def chat(self, message: str):
+          """Interaction avec Ollama en utilisant les outils MCP"""
+          # Récupérer les outils disponibles
+          tools = await self.list_tools()
+
+          # Envoyer au LLM avec le contexte des outils
+          response = self.llm.invoke(
+              message,
+              tools=[tool for tool in tools.get("tools", [])]
+          )
+
+          return response
+
+      async def close(self):
+          await self.client.aclose()
+
+  async def main():
+      # Configuration
+      client = RemoteMCPClient(
+          server_url="https://votre-serveur.com/mcp",
+          headers={
+              "Authorization": "Bearer votre-token",
+              "X-API-Key": "votre-cle-api"
+          }
+      )
+
+      try:
+          # Connexion
+          init_response = await client.connect()
+          print(f"Connecté: {init_response}")
+
+          # Lister les outils
+          tools = await client.list_tools()
+          print(f"Outils disponibles: {tools}")
+
+          # Interaction avec le LLM
+          response = await client.chat("Quelle est la météo ?")
+          print(f"Réponse: {response}")
+
+      finally:
+          await client.close()
+
+  if __name__ == "__main__":
+      asyncio.run(main())

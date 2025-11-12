@@ -70,8 +70,8 @@ class ChatBot:
         self.host = host
         self.ollama_client = ollama.Client(host=host)
         self.start_time = time.time()
-        self.elapsed = time.time()
         self.image_mode = image_mode
+        self.elapsed = 0
         # Check if Ollama is available
         try:
             self.ollama_client.list()
@@ -127,6 +127,7 @@ class ChatBot:
 
         self.conversation_history.append(user_message)
         self.start_time = time.time()
+        self.elapsed = 0
         while True:
             # Call Ollama with conversation history and tools (with streaming)
             if not self.image_mode:
@@ -148,9 +149,9 @@ class ChatBot:
             full_content = ""
             tool_calls = []
             console = Console()
-            with Live(console=console, refresh_per_second=10) as live:
+            with Live(console=console, refresh_per_second=10, transient=True) as live:
+                self.display_claudette_response(user_message["content"], live)
                 for chunk in stream:
-                    self.elapsed = time.time() - self.start_time
                     message = chunk.get("message", {})
                     if content := message.get("content"):
                         full_content += content
@@ -160,7 +161,12 @@ class ChatBot:
                     else:
                         self.display_claudette_response(full_content, live)
 
-            self.display_claudette_response(full_content, live)
+            console.print(
+                Group(
+                    Text(f"(⏱️ {self.elapsed:.1f}s) Claudette: ", style="cyan"),
+                    Markdown(full_content,  code_theme="dracula")
+                )
+            )
 
             print()  # Extra newline for spacing
             # Create the complete message for history
@@ -196,16 +202,11 @@ class ChatBot:
             # Continue the loop to get the next response from the model
 
     def display_claudette_response(self, full_content: str, live: Live):
-
+        self.elapsed = time.time() - self.start_time
         display_text = Text()
         display_text.append(f"(⏱️ {self.elapsed:.1f}s) ", style="cyan")
-        if full_content:
-            display_text.append("Claudette: ", style="cyan")
-            md = Markdown(full_content, code_theme="dracula")
-            live.update(Group(display_text, md))
-        else:
-            display_text.append("Claudette: thinking...", style="dim cyan")
-            live.update(display_text)
+        display_text.append(f"Claudette: thinking... {len(full_content)}", style="dim cyan")
+        live.update(display_text)
 
     def run(self):
         """Run the interactive chat loop"""

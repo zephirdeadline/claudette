@@ -4,3 +4,8 @@ qwen3:8b           500a1f067a9f    5.2 GB    24 seconds ago
 gemma3:4b          a2af6cc3eb7f    3.3 GB    About an hour ago
 qwen3-coder:30b    06c1097efce0    18 GB     9 hours ago
 qwen3:30b          ad815644918f    18 GB     9 hours ago
+gpt-oss:20b
+deepseek-r1:14b
+qwen2.5:14b
+qwen2.5-coder:14b
+"host": "http://localhost:11434",
