@@ -3,20 +3,46 @@ ChatBot class - Main chatbot implementation with Ollama integration
 """
 
 import sys
+import subprocess
+from time import sleep
+
 import ollama
 from rich.console import Console
 from rich.live import Live
 from prompt_toolkit import PromptSession
 from prompt_toolkit.history import FileHistory
 from prompt_toolkit.formatted_text import HTML
+from prompt_toolkit.completion import WordCompleter
 
 from . import ui
-from .models import Model
+from .models import Model, ModelFactory
+
+
+def get_git_branch() -> str | None:
+    """
+    Get the current git branch name.
+
+    Returns:
+        The current branch name or None if not in a git repository
+    """
+    try:
+        result = subprocess.run(
+            ['git', 'rev-parse', '--abbrev-ref', 'HEAD'],
+            capture_output=True,
+            text=True,
+            timeout=1,
+            check=False
+        )
+        if result.returncode == 0:
+            return result.stdout.strip()
+    except (subprocess.TimeoutExpired, FileNotFoundError, Exception):
+        pass
+    return None
 
 class ChatBot:
     """Main chatbot class with Ollama integration"""
 
-    def __init__(self, model: Model, ollama_client = ollama.Client):
+    def __init__(self, model: Model):
         """
         Initialize the chatbot
 
@@ -29,7 +55,8 @@ class ChatBot:
         """
         self.model = model
         self.conversation_history = []
-        self.ollama_client = ollama_client
+        self.temperature = 0
+        self.require_confirmation = self.model.tool_executor.require_confirmation
 
         # Check if Ollama is available
 
@@ -50,7 +77,7 @@ class ChatBot:
         self.conversation_history.append(struct_message)
         #self.display.reset_timer()
 
-        return self.model.process_message(self.conversation_history, live)
+        return self.model.process_message(self.conversation_history, live, self.temperature)
 
 
     def manage_user_input(self, user_input: str) -> str | None:
@@ -88,6 +115,133 @@ class ChatBot:
                 self.load_conversation(parts[1])
             else:
                 ui.show_error("Usage: /load <filename>")
+            return None
+
+        if user_input.startswith("/model"):
+            parts = user_input.split(maxsplit=1)
+            if len(parts) < 2:
+                ui.show_error("Usage: /model <model_name>")
+                return None
+
+            new_model_name = parts[1]
+
+            # Unload current model
+            try:
+                self.model.ollama_client.generate(model=self.model.name, keep_alive=0)
+                ui.show_clear_confirmation()
+                ui.show_model_unload_start()
+                sleep(2)
+            except Exception as e:
+                ui.show_error(f"Failed to unload model: {e}")
+
+            # Load new model
+            from .models import ModelFactory
+            new_model = ModelFactory.create_model(
+                new_model_name,
+                ollama_client=self.model.ollama_client,
+                tool_executor=self.model.tool_executor
+            )
+
+            if new_model is None:
+                ui.show_error(f"Failed to load model: {new_model_name}")
+                return None
+
+            self.model = new_model
+            self.conversation_history = [self.model.get_system_prompt()]
+            ui.show_model_switch_success(new_model_name)
+
+
+        if user_input.startswith("/unload"):
+            try:
+                # Properly unload the model from VRAM by calling generate with keep_alive=0
+                self.model.ollama_client.generate(model=self.model.name, keep_alive=0)
+                ui.show_model_unload_success()
+                self.model.name = "Unloaded"
+            except Exception as e:
+                ui.show_error(f"Failed to unload model: {e}")
+            return None
+
+        if user_input.startswith("/pull"):
+            parts = user_input.split(maxsplit=1)
+            if len(parts) < 2:
+                ui.show_error("Usage: /pull <model_name>")
+                return None
+
+            model_name = parts[1]
+            ui.show_pull_start(model_name)
+
+            try:
+                # Pull model with streaming progress
+                from rich.progress import Progress, SpinnerColumn, TextColumn, BarColumn, DownloadColumn, TransferSpeedColumn, TimeRemainingColumn
+                console = Console()
+
+                with Progress(
+                    SpinnerColumn(),
+                    TextColumn("[progress.description]{task.description}"),
+                    BarColumn(),
+                    DownloadColumn(),
+                    TransferSpeedColumn(),
+                    TimeRemainingColumn(),
+                    console=console
+                ) as progress:
+                    task = progress.add_task(f"Downloading {model_name}", total=None)
+
+                    for chunk in self.model.ollama_client.pull(model_name, stream=True):
+                        if 'total' in chunk and 'completed' in chunk:
+                            progress.update(task, total=chunk['total'], completed=chunk['completed'])
+                        elif 'status' in chunk:
+                            progress.update(task, description=f"{chunk['status']}")
+
+                ui.show_pull_success(model_name)
+
+            except Exception as e:
+                ui.show_error(f"Failed to pull model: {e}")
+
+            return None
+
+        if user_input.startswith("/info"):
+            parts = user_input.split(maxsplit=1)
+            if len(parts) < 2:
+                ui.show_error("Usage: /info <model_name>")
+                return None
+
+            model_name = parts[1]
+
+            try:
+                # Get model info from Ollama
+                model_info = self.model.ollama_client.show(model_name)
+                ui.show_model_info(model_name, model_info)
+
+            except Exception as e:
+                ui.show_error(f"Failed to get model info: {e}")
+
+            return None
+
+        if user_input.startswith("/temperature"):
+            parts = user_input.split(maxsplit=1)
+            if len(parts) < 2:
+                ui.show_error(f"Current temperature: {self.temperature}\nUsage: /temperature <value> (0.0 to 2.0)")
+                return None
+
+            try:
+                new_temp = float(parts[1])
+                if not 0.0 <= new_temp <= 2.0:
+                    ui.show_error("Temperature must be between 0.0 and 2.0")
+                    return None
+
+                self.temperature = new_temp
+                ui.show_temperature_change(new_temp)
+            except ValueError:
+                ui.show_error("Temperature must be a number")
+
+            return None
+
+        if user_input == "/validate":
+            # Toggle validation status
+            current_status = self.model.tool_executor.require_confirmation
+            self.model.tool_executor.require_confirmation = not current_status
+            self.require_confirmation = self.model.tool_executor.require_confirmation
+            ui.show_validation_change(self.require_confirmation)
             return None
 
         return user_input
@@ -178,18 +332,71 @@ class ChatBot:
             ui.show_error(f"Failed to load conversation: {str(e)}")
 
     def discuss(self):
-        session = PromptSession(history=FileHistory("claudette_history.txt"))
+        # Create command completer
+        commands = ['/exit', '/quit', '/clear', '/history', '/save', '/load', '/model', '/unload', '/pull', '/info', '/temperature', '/validate']
+        command_completer = WordCompleter(
+            commands,
+            ignore_case=True,
+            sentence=True,
+            match_middle=False
+        )
+
+        session = PromptSession(
+            history=FileHistory("claudette_history.txt"),
+            completer=command_completer,
+            complete_while_typing=True
+        )
         self.conversation_history.append(self.model.get_system_prompt())
         console = Console()
 
         # Create bottom toolbar function
         def get_bottom_toolbar():
+            import os
             token_count = ui.get_conversation_token_count(self.conversation_history)
-            return HTML(f'<ansi color="#9CA3AF"> Context: {token_count} tokens</ansi>')
+
+            # Build toolbar components
+            toolbar_parts = []
+
+            # Add current directory with folder emoji
+            cwd = os.path.basename(os.getcwd())
+            toolbar_parts.append(f'📁 {cwd}')
+
+            # Add git branch if available with branch emoji
+            branch = get_git_branch()
+            if branch:
+                toolbar_parts.append(f'🌿 {branch}')
+
+            # Add model name with robot emoji
+            toolbar_parts.append(f'🤖 {self.model.name}')
+
+            # Add temperature with thermometer emoji
+            toolbar_parts.append(f'🌡️ {self.temperature}')
+
+            # Add validation status with shield emoji
+            if self.require_confirmation:
+                toolbar_parts.append('<ansi color="#10B981">🛡️ ON </ansi>')
+            else:
+                toolbar_parts.append('<ansi color="#EF4444">🛡️ OFF </ansi>')
+
+            # Add token count with percentage and status indicator
+            max_context = self.model.max_token_context
+            percentage = (token_count / max_context * 100) if max_context > 0 else 0
+
+            # Choose status indicator based on percentage
+            if percentage < 50:
+                status = '<ansi>🟢</ansi>'  # Green - Low usage
+            elif percentage < 80:
+                status = '<ansi>🟡</ansi>'  # Amber - Medium usage
+            else:
+                status = '<ansi>🔴</ansi>'  # Red - High usage
+
+            toolbar_parts.append(f'{status} {token_count}/{max_context} ({percentage:.1f}%)')
+
+            return HTML(f'<ansi color="#9CA3AF"> {" | ".join(toolbar_parts)}</ansi>')
 
         while True:
             try:
-                # Minimal modern prompt with bottom toolbar
+                # Minimal modern prompt with bottom toolbar and autocompletion
                 user_input = session.prompt(
                     HTML('<ansi color="#9CA3AF">  → </ansi>'),
                     bottom_toolbar=get_bottom_toolbar

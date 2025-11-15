@@ -45,24 +45,40 @@ def get_token_count(text: str) -> int:
         return len(text) // 4
 
 
+def serialize_message_for_tokens(message: dict) -> str:
+    """Serialize a message to a string representation for token counting"""
+    import json
+
+    def default_serializer(obj):
+        """Custom serializer for non-JSON-serializable objects"""
+        if hasattr(obj, 'function'):
+            return {
+                "function": {
+                    "name": obj.function.name,
+                    "arguments": obj.function.arguments
+                }
+            }
+        return str(obj)
+
+    try:
+        return json.dumps(message, default=default_serializer)
+    except Exception:
+        return str(message)
+
+
 def get_conversation_token_count(conversation_history: list) -> int:
     """Count the total number of tokens in the conversation history"""
     total_tokens = 0
-    for message in conversation_history:
-        # Count tokens in content
-        if "content" in message and message["content"]:
-            total_tokens += get_token_count(str(message["content"]))
 
-        # Count tokens in tool calls if present
-        if "tool_calls" in message and message["tool_calls"]:
-            import json
-            tool_calls_str = json.dumps(message["tool_calls"])
-            total_tokens += get_token_count(tool_calls_str)
+    for message in conversation_history:
+        # Serialize entire message and count tokens
+        message_str = serialize_message_for_tokens(message)
+        total_tokens += get_token_count(message_str)
 
     return total_tokens
 
 
-def show_welcome(model: "Model", host: str, models_available: list):
+def show_welcome(model: "Model", host: str, ollama_models_available: list):
     """Display welcome message with configuration"""
     console = Console()
 
@@ -95,23 +111,77 @@ def show_welcome(model: "Model", host: str, models_available: list):
     ))
 
     # Available models - complete list with aligned table
-    if len(models_available.models) > 0:
+    from .models import ModelFactory
+
+    # Get all models from Ollama and from config
+    ollama_model_names = set()
+    if len(ollama_models_available.models) > 0:
+        ollama_model_names = {model_info.model for model_info in ollama_models_available.models}
+
+    configured_models = set(ModelFactory.get_available_models())
+
+    # Combine both sets to show all models
+    all_models = ollama_model_names | configured_models
+
+    if len(all_models) > 0:
         models_header = Text()
-        models_header.append(f"MODELS ({len(models_available.models)})", style=f"bold {TEXT_SECONDARY}")
+        models_header.append(f"MODELS ({len(all_models)})", style=f"bold {TEXT_SECONDARY}")
         console.print(Align.center(models_header))
         console.print()
 
-        # Create aligned table
+        # Create aligned table with status indicator
         models_table = Table.grid(padding=(0, 2))
-        models_table.add_column(style=f"{TEXT_PRIMARY}", justify="left")
-        models_table.add_column(style=f"dim {TEXT_SECONDARY}", justify="right")
+        models_table.add_column(style=f"{TEXT_PRIMARY}", justify="left")  # Model name
+        models_table.add_column(style=f"dim {TEXT_SECONDARY}", justify="right")  # Size
+        models_table.add_column(style=f"{TEXT_PRIMARY}", justify="center")  # Status
 
-        for model_info in models_available.models:
-            model_name = model_info.model
-            size = model_info.details.parameter_size if hasattr(model_info, 'details') and hasattr(model_info.details, 'parameter_size') else ""
-            models_table.add_row(f"  · {model_name}", size)
+        # Sort models alphabetically
+        for model_name in sorted(all_models):
+            # Get size from Ollama if available
+            size = ""
+            for model_info in ollama_models_available.models:
+                if model_info.model == model_name:
+                    size = model_info.details.parameter_size if hasattr(model_info, 'details') and hasattr(model_info.details, 'parameter_size') else ""
+                    break
+
+            # Determine status
+            in_ollama = model_name in ollama_model_names
+            in_config = model_name in configured_models
+
+            if in_ollama and in_config:
+                # Ready to use
+                status_indicator = "✓"
+                status_color = SUCCESS_COLOR
+            elif in_ollama and not in_config:
+                # In Ollama but not configured
+                status_indicator = "⚠"
+                status_color = WARNING_COLOR
+            elif not in_ollama and in_config:
+                # Configured but not in Ollama
+                status_indicator = "✗"
+                status_color = "red"
+            else:
+                # Should not happen
+                status_indicator = "?"
+                status_color = TEXT_SECONDARY
+
+            # Create status text with color
+            status_text = Text(status_indicator, style=status_color)
+
+            models_table.add_row(f"  · {model_name}", size, status_text)
 
         console.print(Align.center(models_table))
+
+        # Legend for status indicators
+        legend = Text()
+        legend.append("  ", style="")
+        legend.append("✓", style=SUCCESS_COLOR)
+        legend.append(" Ready  ", style=f"dim {TEXT_SECONDARY}")
+        legend.append("⚠", style=WARNING_COLOR)
+        legend.append(" Missing config  ", style=f"dim {TEXT_SECONDARY}")
+        legend.append("✗", style="red")
+        legend.append(" Not in Ollama", style=f"dim {TEXT_SECONDARY}")
+        console.print(Align.center(legend))
         console.print()
 
     # Tools - horizontal layout (dynamic)
@@ -146,6 +216,18 @@ def show_welcome(model: "Model", host: str, models_available: list):
     help_text.append("/save [name]", style=f"{TEXT_SECONDARY}")
     help_text.append(" · ", style=f"dim {TEXT_SECONDARY}")
     help_text.append("/load <name>", style=f"{TEXT_SECONDARY}")
+    help_text.append(" · ", style=f"dim {TEXT_SECONDARY}")
+    help_text.append("/model <name>", style=f"{TEXT_SECONDARY}")
+    help_text.append(" · ", style=f"dim {TEXT_SECONDARY}")
+    help_text.append("/unload", style=f"{TEXT_SECONDARY}")
+    help_text.append(" · ", style=f"dim {TEXT_SECONDARY}")
+    help_text.append("/pull <name>", style=f"{TEXT_SECONDARY}")
+    help_text.append(" · ", style=f"dim {TEXT_SECONDARY}")
+    help_text.append("/info <name>", style=f"{TEXT_SECONDARY}")
+    help_text.append(" · ", style=f"dim {TEXT_SECONDARY}")
+    help_text.append("/temperature <value>", style=f"{TEXT_SECONDARY}")
+    help_text.append(" · ", style=f"dim {TEXT_SECONDARY}")
+    help_text.append("/validate", style=f"{TEXT_SECONDARY}")
 
     console.print(Align.center(help_text))
     console.print(f"{'─' * console.width}", style=f"dim {TEXT_SECONDARY}")
@@ -406,4 +488,187 @@ def show_image_found(image_paths: list, prompt: str):
     image_text.append(f"vision: {len(image_paths)} image(s) attached", style=f"dim {TEXT_SECONDARY}")
 
     console.print(image_text)
+    console.print()
+
+def show_model_unload_start():
+    """Display model unloading start message"""
+    console = Console()
+    console.print(Text("  ⏳ Unloading current model...", style=f"dim {TEXT_SECONDARY}"))
+
+def show_model_switch_success(model_name: str):
+    """Display model switch success message"""
+    console = Console()
+    success_text = Text()
+    success_text.append("  ✓ ", style=f"{SUCCESS_COLOR}")
+    success_text.append(f"Switched to model: {model_name}", style=f"{TEXT_SECONDARY}")
+    console.print()
+    console.print(success_text)
+    console.print()
+
+def show_model_unload_success():
+    """Display model unload success message"""
+    console = Console()
+    unload_text = Text()
+    unload_text.append("  ✓ ", style=f"{SUCCESS_COLOR}")
+    unload_text.append("Model unloaded from memory", style=f"{TEXT_SECONDARY}")
+    console.print()
+    console.print(unload_text)
+    console.print()
+
+def show_pull_start(model_name: str):
+    """Display pull start message"""
+    console = Console()
+    pull_text = Text()
+    pull_text.append("  ⏳ ", style=f"{WARNING_COLOR}")
+    pull_text.append(f"Pulling model: {model_name}", style=f"{TEXT_SECONDARY}")
+    console.print()
+    console.print(pull_text)
+    console.print()
+
+def show_pull_success(model_name: str):
+    """Display pull success message"""
+    console = Console()
+    success_text = Text()
+    success_text.append("  ✓ ", style=f"{SUCCESS_COLOR}")
+    success_text.append(f"Successfully pulled model: {model_name}", style=f"{TEXT_SECONDARY}")
+    console.print()
+    console.print(success_text)
+    console.print()
+
+def show_model_info(model_name: str, model_info: dict):
+    """Display model information in a formatted panel"""
+    console = Console()
+
+    try:
+        console.print()
+
+        # Create info panel
+        from rich.panel import Panel
+        from rich.table import Table
+
+        info_table = Table.grid(padding=(0, 2))
+        info_table.add_column(style=f"bold {TEXT_SECONDARY}", justify="right", width=20)
+        info_table.add_column(style=f"{TEXT_PRIMARY}")
+
+        # Basic info
+        info_table.add_row("Model", model_name)
+
+        # Details section
+        details = model_info.get('details', {})
+        if details:
+            if hasattr(details, 'format'):
+                info_table.add_row("Format", details.format.upper())
+            if hasattr(details, 'family'):
+                info_table.add_row("Family", details.family)
+            if hasattr(details, 'parameter_size'):
+                info_table.add_row("Size", details.parameter_size)
+            if hasattr(details, 'quantization_level'):
+                info_table.add_row("Quantization", details.quantization_level)
+
+        # Model info section - extract context length
+        modelinfo = model_info.get('modelinfo', {})
+        if modelinfo:
+            # Try to get context length from different possible keys
+            context_length = None
+            for key in modelinfo.keys():
+                if 'context_length' in key:
+                    context_length = modelinfo[key]
+                    break
+
+            if context_length:
+                # Format large numbers with K/M suffix
+                if context_length >= 1000000:
+                    context_str = f"{context_length / 1000000:.1f}M tokens"
+                elif context_length >= 1000:
+                    context_str = f"{context_length / 1000:.0f}K tokens"
+                else:
+                    context_str = f"{context_length} tokens"
+                info_table.add_row("Context Window", context_str)
+
+        # Capabilities section
+        capabilities = model_info.get('capabilities', [])
+        if capabilities:
+            # Check for vision support
+            has_vision = 'vision' in capabilities
+            info_table.add_row("Vision Support", "✓ Yes" if has_vision else "✗ No")
+
+            # Check for tools/function calling support
+            has_tools = 'tools' in capabilities or 'function_calling' in capabilities
+            info_table.add_row("Tools Support", "✓ Yes" if has_tools else "✗ No")
+
+            # List all capabilities
+            caps_str = ", ".join(capabilities)
+            info_table.add_row("Capabilities", caps_str)
+
+        # Modified date
+        if hasattr(model_info, 'modified_at'):
+            modified_str = model_info.modified_at.strftime("%Y-%m-%d %H:%M")
+            info_table.add_row("Modified", modified_str)
+
+        # Parameters section - show key parameters
+        parameters = model_info.get('parameters', '')
+        if parameters:
+            import re
+            # Extract temperature
+            temp_match = re.search(r'temperature\s+([\d.]+)', parameters)
+            if temp_match:
+                info_table.add_row("Temperature", temp_match.group(1))
+
+            # Extract top_k
+            top_k_match = re.search(r'top_k\s+([\d]+)', parameters)
+            if top_k_match:
+                info_table.add_row("Top K", top_k_match.group(1))
+
+            # Extract top_p
+            top_p_match = re.search(r'top_p\s+([\d.]+)', parameters)
+            if top_p_match:
+                info_table.add_row("Top P", top_p_match.group(1))
+
+        # Check if configured in Claudette
+        from .models import ModelFactory
+        is_configured = ModelFactory.is_model_ready(model_name)
+        config_status = f"{'✓ Ready' if is_configured else '⚠ Not configured'}"
+        status_style = SUCCESS_COLOR if is_configured else WARNING_COLOR
+        status_text = Text(config_status, style=status_style)
+        info_table.add_row("Claudette Status", status_text)
+
+        console.print(Panel(
+            info_table,
+            title=f"[bold {BRAND_COLOR}]Model Information[/bold {BRAND_COLOR}]",
+            border_style=f"dim {TEXT_SECONDARY}",
+            padding=(1, 2)
+        ))
+        console.print()
+
+    except Exception as e:
+        show_error(f"Failed to format model info: {e}")
+
+
+def show_temperature_change(temperature: float):
+    """Display temperature change confirmation"""
+    console = Console()
+    console.print()
+    console.print(
+        f"  [dim {TEXT_SECONDARY}]→[/dim {TEXT_SECONDARY}] Temperature set to [bold {ACCENT_COLOR}]{temperature}[/bold {ACCENT_COLOR}]"
+    )
+    console.print()
+
+
+def show_validation_change(validation_enabled: bool):
+    """Display validation status change confirmation"""
+    console = Console()
+    validation_text = Text()
+    validation_text.append("  ✓ ", style=f"{SUCCESS_COLOR}")
+
+    if validation_enabled:
+        validation_text.append("Tool validation ", style=f"{TEXT_SECONDARY}")
+        validation_text.append("enabled", style=f"bold {SUCCESS_COLOR}")
+        validation_text.append(" 🛡️", style=f"{SUCCESS_COLOR}")
+    else:
+        validation_text.append("Tool validation ", style=f"{TEXT_SECONDARY}")
+        validation_text.append("disabled", style=f"bold {WARNING_COLOR}")
+        validation_text.append(" ⚠️", style=f"{WARNING_COLOR}")
+
+    console.print()
+    console.print(validation_text)
     console.print()

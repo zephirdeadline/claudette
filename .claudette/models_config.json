@@ -1,0 +1,34 @@
+{
+  "models": {
+    "deepseek-coder-v2:16b": {
+      "system_prompt": "You are a helpful coding assistant.",
+      "enable_tools": false
+    },
+    "deepseek-coder:6.7b": {
+      "system_prompt": "You are a helpful coding assistant.",
+      "enable_tools": false
+    },
+    "qwen2.5-coder:14b": {
+      "system_prompt": "You are a helpful coding assistant with tool calling capabilities.",
+      "enable_tools": true
+    },
+    "gemma3:4b": {
+      "system_prompt": "You are a helpful AI assistant.",
+      "enable_tools": false
+    },
+    "qwen3:4b": {
+      "system_prompt": "You are a helpful AI assistant.",
+      "enable_tools": true
+    },
+    "deepseek-r1:1.5b": {
+      "system_prompt": "You are a helpful AI assistant focused on reasoning.",
+      "enable_tools": false
+    },
+    "deepseek-r1:7b": {
+      "system_prompt": "You are a helpful AI assistant focused on reasoning.",
+      "enable_tools": false
+    }
+  },
+  "default_model": "qwen3:4b",
+  "default_system_prompt": "You are a helpful AI assistant."
+}

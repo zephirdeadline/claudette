@@ -16,6 +16,41 @@ class ToolExecutor:
         self.require_confirmation = require_confirmation
         self.tools_definition = self._define_tools()
 
+    def _get_confirmation(self, emoji: str, action: str, details: List[tuple]) -> bool:
+        """
+        Show a confirmation prompt and get user response.
+
+        Args:
+            emoji: Emoji to display (e.g., "⚠", "📝", "✏️")
+            action: Action description (e.g., "Command execution", "Create file")
+            details: List of (label, value, style) tuples to display
+
+        Returns:
+            True if user confirms, False otherwise
+        """
+        from rich.console import Console
+        from rich.text import Text
+
+        console = Console()
+        console.print()
+
+        # Show action header
+        warning_text = Text()
+        warning_text.append(f"  {emoji} ", style="bold #F59E0B")
+        warning_text.append(f"{action}", style="bold #E5E7EB")
+        console.print(warning_text)
+
+        # Show details
+        for label, value, style in details:
+            detail_text = Text()
+            detail_text.append(f"    {label}: ", style=style)
+            detail_text.append(value, style="#9CA3AF")
+            console.print(detail_text)
+
+        confirmation = input("    Allow? (Y/n): ").strip().lower()
+        # Default to 'yes' if user just presses Enter
+        return confirmation in ['', 'y', 'yes']
+
     def _define_tools(self) -> List[Dict[str, Any]]:
         """Define available tools for the LLM"""
         return [
@@ -184,6 +219,17 @@ class ToolExecutor:
 
     def write_file(self, file_path: str, content: str) -> str:
         """Write content to a file"""
+        if self.require_confirmation:
+            # Check if file exists to show appropriate message
+            file_exists = os.path.exists(file_path)
+            action = f"{'Overwrite' if file_exists else 'Create'} file: {file_path}"
+
+            # Show content preview (first 100 chars)
+            preview = content[:100] + "..." if len(content) > 100 else content
+
+            if not self._get_confirmation("📝", action, [("Content", preview, "#6B7280")]):
+                return "File write cancelled by user."
+
         try:
             # Create directory if it doesn't exist
             os.makedirs(os.path.dirname(file_path) if os.path.dirname(file_path) else '.', exist_ok=True)
@@ -199,6 +245,20 @@ class ToolExecutor:
 
     def edit_file(self, file_path: str, old_content: str, new_content: str) -> str:
         """Edit a file by replacing content"""
+        if self.require_confirmation:
+            # Show what's being replaced (preview)
+            old_preview = old_content[:80] + "..." if len(old_content) > 80 else old_content
+            new_preview = new_content[:80] + "..." if len(new_content) > 80 else new_content
+
+            action = f"Edit file: {file_path}"
+            details = [
+                ("Replace", old_preview, "#EF4444"),
+                ("With", new_preview, "#10B981")
+            ]
+
+            if not self._get_confirmation("✏️", action, details):
+                return "File edit cancelled by user."
+
         try:
             with open(file_path, 'r', encoding='utf-8') as f:
                 content = f.read()
@@ -220,22 +280,8 @@ class ToolExecutor:
     def execute_command(self, command: str, working_dir: str = None) -> str:
         """Execute a shell command"""
         if self.require_confirmation:
-            from rich.console import Console
-            from rich.text import Text
-
-            console = Console()
-
-            # Minimal security prompt
-            console.print()
-            warning_text = Text()
-            warning_text.append("  ⚠ ", style="bold #F59E0B")
-            warning_text.append("Command execution: ", style="bold #E5E7EB")
-            warning_text.append(command, style="#9CA3AF")
-
-            console.print(warning_text)
-
-            confirmation = input("    Allow? (y/n): ").strip().lower()
-            if confirmation != 'y':
+            action = f"Command execution: {command}"
+            if not self._get_confirmation("⚠", action, []):
                 return "Command execution cancelled by user."
 
         try:
