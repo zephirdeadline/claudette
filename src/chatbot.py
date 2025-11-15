@@ -79,7 +79,10 @@ class ChatBot:
         console = Console()
         while True:
             try:
-                user_input = session.prompt(HTML("<ansigreen>You: </ansigreen>")).strip()
+                # Modern styled prompt
+                user_input = session.prompt(
+                    HTML("<ansicyan><b>👤 You</b></ansicyan><ansiwhite> ► </ansiwhite>")
+                ).strip()
                 user_input = self.manage_user_input(user_input)
                 if user_input.lower() == "continue":
                     continue
