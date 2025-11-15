@@ -221,28 +221,20 @@ class ToolExecutor:
         """Execute a shell command"""
         if self.require_confirmation:
             from rich.console import Console
-            from rich.panel import Panel
             from rich.text import Text
-            from rich import box
 
             console = Console()
 
+            # Minimal security prompt
+            console.print()
             warning_text = Text()
-            warning_text.append("⚠️  Command Execution Request\n\n", style="bold yellow")
-            warning_text.append("Command: ", style="bold white")
-            warning_text.append(command, style="bold red")
-            if working_dir:
-                warning_text.append(f"\nWorking Directory: ", style="bold white")
-                warning_text.append(working_dir, style="cyan")
+            warning_text.append("  ⚠ ", style="bold #F59E0B")
+            warning_text.append("Command execution: ", style="bold #E5E7EB")
+            warning_text.append(command, style="#9CA3AF")
 
-            console.print(Panel(
-                warning_text,
-                title="[bold red]⚡ Security Confirmation Required[/bold red]",
-                border_style="yellow",
-                box=box.HEAVY
-            ))
+            console.print(warning_text)
 
-            confirmation = input("  Allow execution? (y/n): ").strip().lower()
+            confirmation = input("    Allow? (y/n): ").strip().lower()
             if confirmation != 'y':
                 return "Command execution cancelled by user."
 
