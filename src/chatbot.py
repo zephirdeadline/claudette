@@ -357,8 +357,8 @@ class ChatBot:
             # Build toolbar components
             toolbar_parts = []
 
-            # Add current directory with folder emoji
-            cwd = os.path.basename(os.getcwd())
+            # Add current directory with folder emoji (full path)
+            cwd = os.getcwd()
             toolbar_parts.append(f'📁 {cwd}')
 
             # Add git branch if available with branch emoji

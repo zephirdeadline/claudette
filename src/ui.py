@@ -326,30 +326,90 @@ def show_response(console: Console, elapsed: float, content: str):
 def show_tool_usage(tool_name: str, tool_args: dict):
     """Display tool usage information"""
     import json
+    import re
     console = Console()
 
-    # Minimal tool notification
+    # Tool header
     tool_text = Text()
     tool_text.append("  ▸ ", style=f"{WARNING_COLOR}")
     tool_text.append(f"{tool_name}", style=f"bold {TEXT_PRIMARY}")
-
-    # Show key arguments inline
-    if tool_args:
-        key_arg = list(tool_args.values())[0] if tool_args else ""
-        if isinstance(key_arg, str) and len(key_arg) < 50:
-            tool_text.append(f"  {key_arg}", style=f"dim {TEXT_SECONDARY}")
-
     console.print(tool_text)
+
+    # Show all arguments with details
+    if tool_args:
+        for arg_name, arg_value in tool_args.items():
+            arg_text = Text()
+            arg_text.append("    ", style="")
+            arg_text.append(f"{arg_name}: ", style=f"bold {WARNING_COLOR}")
+
+            # Format the argument value based on its type
+            if isinstance(arg_value, str):
+                # Truncate long strings for readability
+                if len(arg_value) > 100:
+                    display_value = arg_value[:100] + "..."
+                else:
+                    display_value = arg_value
+                # Replace newlines with visible indicator
+                display_value = display_value.replace("\n", "↵\n    " + " " * (len(arg_name) + 2))
+                arg_text.append(f'"{display_value}"', style=f"{WARNING_COLOR}")
+            elif isinstance(arg_value, (int, float, bool)):
+                arg_text.append(str(arg_value), style=f"{WARNING_COLOR}")
+            elif isinstance(arg_value, (list, dict)):
+                # Pretty print JSON for complex types
+                json_str = json.dumps(arg_value, indent=2, ensure_ascii=False)
+                if len(json_str) > 100:
+                    json_str = json_str[:100] + "..."
+                arg_text.append(json_str, style=f"{WARNING_COLOR}")
+            else:
+                arg_text.append(str(arg_value), style=f"{WARNING_COLOR}")
+
+            console.print(arg_text)
+
+    console.print()
 
 def show_tool_result(result: str):
     """Display tool execution result"""
+    import re
     console = Console()
-    # Just show a success indicator, result goes to model
+
+    # Show success indicator
     result_text = Text()
     result_text.append("  ✓ ", style=f"{SUCCESS_COLOR}")
     result_text.append("completed", style=f"dim {TEXT_SECONDARY}")
-
     console.print(result_text)
+
+    # Extract and display URLs found in the result
+    if result:
+        # Regex pattern to match URLs
+        url_pattern = r'https?://[^\s\)\]"\'>]+'
+        urls = re.findall(url_pattern, result)
+
+        if urls:
+            # Remove duplicates while preserving order
+            seen = set()
+            unique_urls = []
+            for url in urls:
+                if url not in seen:
+                    seen.add(url)
+                    unique_urls.append(url)
+
+            # Display URLs
+            urls_text = Text()
+            urls_text.append("    ", style="")
+            urls_text.append(f"🔗 {len(unique_urls)} URL(s): ", style=f"bold {WARNING_COLOR}")
+            console.print(urls_text)
+
+            for url in unique_urls[:5]:  # Limit to 5 URLs to avoid clutter
+                url_line = Text()
+                url_line.append("      • ", style=f"dim {TEXT_SECONDARY}")
+                url_line.append(url, style=f"{WARNING_COLOR}")
+                console.print(url_line)
+
+            if len(unique_urls) > 5:
+                more_text = Text()
+                more_text.append(f"      ... and {len(unique_urls) - 5} more", style=f"dim {TEXT_SECONDARY}")
+                console.print(more_text)
+
     console.print()
 
 def show_history(conversation_history: list):
