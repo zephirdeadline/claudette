@@ -82,16 +82,37 @@ def show_welcome(model: "Model", host: str, ollama_models_available: list):
     """Display welcome message with configuration"""
     console = Console()
 
-    # Minimalist header
+    # Mascot and header - minimalist block design
     console.print()
-    header = Text()
-    header.append("claudette", style=f"bold {BRAND_COLOR}")
-    header.append(" ", style="")
-    header.append("v1.0", style=f"dim {TEXT_SECONDARY}")
-    console.print(Align.center(header))
 
-    subtitle = Text("AI Assistant with Local LLM", style=f"dim {TEXT_SECONDARY}")
-    console.print(Align.center(subtitle))
+    # Create the full banner as a single block
+    banner = Table.grid(padding=0)
+    banner.add_column(justify="left")
+
+    # Build the banner lines - Sleek cat/feline mascot
+    line1 = Text()
+    line1.append(" ╱╲   ╱╲   ", style=f"{BRAND_COLOR}")
+    line1.append("claudette ", style=f"bold {BRAND_COLOR}")
+    line1.append("v1.0", style=f"dim {TEXT_SECONDARY}")
+
+    line2 = Text()
+    line2.append("│ ◉ ▼ ◉ │  ", style=f"{BRAND_COLOR}")
+    line2.append(f"{model.name}", style=f"{TEXT_PRIMARY}")
+    line2.append(" · ", style=f"dim {TEXT_SECONDARY}")
+    line2.append("Local LLM", style=f"dim {TEXT_SECONDARY}")
+
+    line3 = Text()
+    line3.append(" ╲  ω  ╱   ", style=f"{BRAND_COLOR}")
+
+    line4 = Text()
+    line4.append("  ▔▔▔▔▔    ", style=f"dim {BRAND_COLOR}")
+
+    banner.add_row(line1)
+    banner.add_row(line2)
+    banner.add_row(line3)
+    banner.add_row(line4)
+
+    console.print(Align.center(banner))
     console.print()
 
     # Clean info grid
@@ -99,9 +120,16 @@ def show_welcome(model: "Model", host: str, ollama_models_available: list):
     info_grid.add_column(style=f"{TEXT_SECONDARY}", justify="right", width=15)
     info_grid.add_column(style=f"bold {TEXT_PRIMARY}")
 
+    # Vision status with color coding
+    vision_status = Text()
+    if model.image_mode:
+        vision_status.append("enabled", style=f"bold {SUCCESS_COLOR}")
+    else:
+        vision_status.append("disabled", style=f"bold red")
+
     info_grid.add_row("MODEL", model.name)
     info_grid.add_row("HOST", host)
-    info_grid.add_row("VISION", "enabled" if model.image_mode else "disabled")
+    info_grid.add_row("VISION", vision_status)
 
     console.print(Panel(
         Align.center(info_grid),
