@@ -25,6 +25,7 @@ def reset_timer(self):
 def show_welcome(model: "Model", host: str, models_available: list):
     """Display welcome message with configuration"""
     console = Console()
+    from rich.layout import Layout
 
     # Title panel
     title = Text()
@@ -39,18 +40,23 @@ def show_welcome(model: "Model", host: str, models_available: list):
         padding=(1, 2)
     ))
 
-    # Configuration table
-    config_table = Table(show_header=False, box=box.SIMPLE, padding=(0, 2))
-    config_table.add_column("Label", style="bold magenta", width=20)
-    config_table.add_column("Value", style="cyan")
+    # Configuration and Tools in one table
+    info_table = Table(show_header=False, box=box.SIMPLE, padding=(0, 1), show_edge=False)
+    info_table.add_column("", style="bold magenta", width=20, no_wrap=True)
+    info_table.add_column("", style="cyan", width=25)
+    info_table.add_column("", style="dim", width=5)  # Separator
+    info_table.add_column("", style="bold yellow", width=3, no_wrap=True)
+    info_table.add_column("", style="bold green", width=18, no_wrap=True)
 
-    config_table.add_row("🤖 Active Model", model.name)
-    config_table.add_row("🌐 Host", host)
-    config_table.add_row("🖼️  Image Mode", "✓ Enabled" if model.image_mode else "✗ Disabled")
+    info_table.add_row("🤖 Active Model", model.name, "", "🔍", "Web Search")
+    info_table.add_row("🌐 Host", host, "", "📖", "Read File")
+    info_table.add_row("🖼️  Image Mode", "✓ Enabled" if model.image_mode else "✗ Disabled", "", "✏️", "Write File")
+    info_table.add_row("", "", "", "📝", "Edit File")
+    info_table.add_row("", "", "", "⚡", "Execute Command")
 
     console.print(Panel(
-        config_table,
-        title="[bold white]⚙️  Configuration[/bold white]",
+        info_table,
+        title="[bold white]⚙️  Configuration & Tools[/bold white]",
         border_style="blue",
         box=box.ROUNDED
     ))
@@ -71,25 +77,6 @@ def show_welcome(model: "Model", host: str, models_available: list):
         models_table,
         title=f"[bold white]📦 Available Models ({len(models_available.models)})[/bold white]",
         border_style="magenta",
-        box=box.ROUNDED
-    ))
-
-    # Tools table
-    tools_table = Table(show_header=False, box=None, padding=(0, 1))
-    tools_table.add_column("Icon", style="bold yellow", width=4)
-    tools_table.add_column("Tool", style="bold green", width=20)
-    tools_table.add_column("Description", style="dim white")
-
-    tools_table.add_row("🔍", "Web Search", "Search internet via DuckDuckGo")
-    tools_table.add_row("📖", "Read File", "Read file contents")
-    tools_table.add_row("✏️ ", "Write File", "Create or overwrite files")
-    tools_table.add_row("📝", "Edit File", "Modify existing files")
-    tools_table.add_row("⚡", "Execute Command", "Run shell commands")
-
-    console.print(Panel(
-        tools_table,
-        title="[bold white]🛠️  Available Tools[/bold white]",
-        border_style="green",
         box=box.ROUNDED
     ))
 
