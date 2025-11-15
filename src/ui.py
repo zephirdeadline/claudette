@@ -13,6 +13,7 @@ from rich.panel import Panel
 from rich.table import Table
 from rich import box
 from rich.align import Align
+import tiktoken
 
 if TYPE_CHECKING:
     from .models import Model
@@ -25,6 +26,40 @@ TEXT_SECONDARY = "#9CA3AF"  # Medium gray
 SUCCESS_COLOR = "#10B981"  # Green
 WARNING_COLOR = "#F59E0B"  # Amber
 
+# Initialize tokenizer (using cl100k_base encoding which is used by GPT-4 and similar models)
+_tokenizer = None
+
+def get_token_count(text: str) -> int:
+    """Count the number of tokens in a text string"""
+    global _tokenizer
+    if _tokenizer is None:
+        try:
+            _tokenizer = tiktoken.get_encoding("cl100k_base")
+        except Exception:
+            # Fallback to a simple character-based estimation if tiktoken fails
+            return len(text) // 4  # Rough estimate: ~4 chars per token
+
+    try:
+        return len(_tokenizer.encode(text))
+    except Exception:
+        return len(text) // 4
+
+
+def get_conversation_token_count(conversation_history: list) -> int:
+    """Count the total number of tokens in the conversation history"""
+    total_tokens = 0
+    for message in conversation_history:
+        # Count tokens in content
+        if "content" in message and message["content"]:
+            total_tokens += get_token_count(str(message["content"]))
+
+        # Count tokens in tool calls if present
+        if "tool_calls" in message and message["tool_calls"]:
+            import json
+            tool_calls_str = json.dumps(message["tool_calls"])
+            total_tokens += get_token_count(tool_calls_str)
+
+    return total_tokens
 
 
 def show_welcome(model: "Model", host: str, models_available: list):
@@ -181,7 +216,8 @@ def show_thinking(full_content: str, live: Live, start_time: float):
     thinking_text.append(f" {elapsed:.1f}s", style=f"dim {TEXT_SECONDARY}")
 
     if len(full_content) > 0:
-        thinking_text.append(f" · {len(full_content)} chars", style=f"dim {TEXT_SECONDARY}")
+        token_count = get_token_count(full_content)
+        thinking_text.append(f" · {token_count} tokens", style=f"dim {TEXT_SECONDARY}")
 
     live.update(thinking_text)
 
@@ -191,6 +227,10 @@ def show_response(console: Console, elapsed: float, content: str):
     header = Text()
     header.append("  ● ", style=f"{SUCCESS_COLOR}")
     header.append(f"{elapsed:.1f}s", style=f"dim {TEXT_SECONDARY}")
+
+    # Add token count
+    token_count = get_token_count(content)
+    header.append(f" · {token_count} tokens", style=f"dim {TEXT_SECONDARY}")
 
     console.print(header)
     console.print()

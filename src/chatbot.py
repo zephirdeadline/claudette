@@ -181,11 +181,18 @@ class ChatBot:
         session = PromptSession(history=FileHistory("claudette_history.txt"))
         self.conversation_history.append(self.model.get_system_prompt())
         console = Console()
+
+        # Create bottom toolbar function
+        def get_bottom_toolbar():
+            token_count = ui.get_conversation_token_count(self.conversation_history)
+            return HTML(f'<ansi color="#9CA3AF"> Context: {token_count} tokens</ansi>')
+
         while True:
             try:
-                # Minimal modern prompt
+                # Minimal modern prompt with bottom toolbar
                 user_input = session.prompt(
-                    HTML('<ansi color="#9CA3AF">  → </ansi>')
+                    HTML('<ansi color="#9CA3AF">  → </ansi>'),
+                    bottom_toolbar=get_bottom_toolbar
                 ).strip()
 
                 user_input = self.manage_user_input(user_input)
