@@ -1,12 +1,12 @@
 """
 ChatBot class - Main chatbot implementation with Ollama integration
 """
-
+import os
 import sys
-import subprocess
-from time import sleep
+from pathlib import Path
 
 import ollama
+from ollama import ResponseError
 from rich.console import Console
 from rich.live import Live
 from prompt_toolkit import PromptSession
@@ -15,29 +15,11 @@ from prompt_toolkit.formatted_text import HTML
 from prompt_toolkit.completion import WordCompleter
 
 from . import ui
-from .models import Model, ModelFactory
-
-
-def get_git_branch() -> str | None:
-    """
-    Get the current git branch name.
-
-    Returns:
-        The current branch name or None if not in a git repository
-    """
-    try:
-        result = subprocess.run(
-            ['git', 'rev-parse', '--abbrev-ref', 'HEAD'],
-            capture_output=True,
-            text=True,
-            timeout=1,
-            check=False
-        )
-        if result.returncode == 0:
-            return result.stdout.strip()
-    except (subprocess.TimeoutExpired, FileNotFoundError, Exception):
-        pass
-    return None
+from .tools import ToolExecutor
+from .models import Model
+from .commands import CommandManager
+from .utils import get_git_branch, save_conversation, load_conversation
+from .completers import CommandAndFileCompleter
 
 class ChatBot:
     """Main chatbot class with Ollama integration"""
@@ -56,12 +38,124 @@ class ChatBot:
         self.model = model
         self.conversation_history = []
         self.temperature = 0
-        self.require_confirmation = self.model.tool_executor.require_confirmation
+        self.require_confirmation = self.model.tool_executor.require_confirmation if self.model.tool_executor else True
+        self.enable_thinking = False
+        self.enable_reprompting = False
+        self.command_manager = CommandManager()
 
-        # Check if Ollama is available
+    def _reprompt_user_message(self, user_message: str) -> str:
+        """
+        Rewrite user message to be more comprehensible for the LLM
 
+        Args:
+            user_message: Original user message
 
-    def chat(self, live: Live, user_message: str) -> (str, float):
+        Returns:
+            Rewritten user message
+        """
+        # Build the reprompting instruction with context from the main LLM's system prompt
+        llm_context = f"""
+TARGET LLM SYSTEM PROMPT CONTEXT:
+The user's message will be processed by an LLM with the following system prompt constraints and capabilities:
+
+{self.model.system_prompt}
+
+---"""
+
+        reprompt_instruction = {
+            "role": "system",
+            "content": f"""{llm_context}
+
+You are a prompt optimization assistant. Your task is to rewrite the user's input to make it clearer and more comprehensible for the target LLM assistant described above.
+
+CRITICAL INSTRUCTIONS:
+- Take into account the TARGET LLM's system prompt, capabilities, and constraints when rewriting
+- Align the rewritten message with the LLM's expected behavior and protocols
+- If the LLM has specific protocols (e.g., "CRITICAL - Action Explanation", "Type Annotations", "AGENTS.md awareness"), ensure the rewritten prompt respects these
+- Keep the same intent and meaning as the original message
+- Make it more explicit and detailed
+- Add context if needed (project context, technical details, etc.)
+- Fix grammar and spelling errors
+- Make it more structured if it's vague
+- Keep it concise but clear and actionable
+- If the message is already clear and aligned with the LLM's protocols, return it unchanged
+- ONLY return the rewritten message, nothing else (no explanations, no meta-commentary)
+
+CRITICAL - PERSPECTIVE AND VOICE:
+- ALWAYS keep the USER'S perspective in the rewritten message
+- NEVER switch to first-person "I" from the assistant's perspective
+- The rewritten message should be a USER REQUEST, not an assistant statement
+- Use imperative form ("Do this", "Check that") or question form ("Can you...", "Please...")
+- NEVER use "I will..." or "I'm going to..." - these are assistant phrases, not user requests
+
+EXAMPLES:
+Original: "fix the bug"
+Rewritten: "Identify and fix the bug in the current codebase. Please explain what you're going to do before making changes, verify the fix works, and ensure all imports are at the top of the file."
+
+Original: "add email validation"
+Rewritten: "Add email validation functionality. First check if AGENTS.md exists to see if there's already a validation utility we can extend. Use proper Python type hints for all functions."
+
+Original: "cherche sur le web les dernières news"
+Rewritten: "Recherche sur le web les dernières actualités. Utilise l'outil web_search pour trouver les informations les plus récentes et présente-les de manière structurée."
+WRONG: "Je vais rechercher sur le web les dernières actualités..." (NEVER use "Je vais")
+
+Original: "Hello, how are you?"
+Rewritten: "Hello, how are you?" (unchanged - already clear)
+"""
+        }
+
+        temp_history = [
+            reprompt_instruction,
+            {"role": "user", "content": f"Reprompt, transform, keep the meaning of the user question and return only the result, nothing more {reprompt_instruction}: <UserMessage>{user_message}</UserMessage>"},
+        ]
+
+        # Use streaming call for reprompting with live animation
+        from time import time
+        from rich.live import Live
+        from rich.console import Console
+
+        start_time = time()
+        reprompted_message = ""
+
+        console = Console()
+
+        # Start streaming with live animation
+        with Live(console=console, refresh_per_second=10, transient=True) as live:
+            for chunk in self.model.ollama_client.chat(
+                model=self.model.name,
+                messages=temp_history,
+                options={"temperature": 0.3},
+                stream=True
+            ):
+                # Get content from chunk
+                message = chunk.get("message", {})
+                if content := message.get("content"):
+                    reprompted_message += content
+
+                # Update live display with animation and token count
+                ui.show_reprompting_animation(reprompted_message, live, start_time)
+
+        elapsed_time = time() - start_time
+
+        # Calculate total tokens using the tokenizer
+        total_tokens = ui.get_token_count(reprompted_message)
+
+        # Log reprompting statistics
+        self.model.stats_manager.update_stats(
+            model_name=self.model.name,
+            thinking_tokens=0,  # No thinking in reprompting
+            response_tokens=total_tokens,
+            time_seconds=elapsed_time,
+            is_reprompting=True
+        )
+
+        # Show the reprompted version to the user with token info
+        if reprompted_message != user_message:
+            ui.show_reprompted_message(user_message, reprompted_message, total_tokens, elapsed_time)
+
+        return reprompted_message
+
+    def chat(self, live: Live, user_message: str) -> (str, float, str):
         """
         Send a message and get response with tool support
 
@@ -69,16 +163,19 @@ class ChatBot:
             user_message: The user's message
 
         Returns:
-            The assistant's response
+            Tuple of (response, elapsed_time, thinking_content)
         """
+        # Apply reprompting if enabled
+        if self.enable_reprompting:
+            user_message = self._reprompt_user_message(user_message)
+
         # Prepare user message
         struct_message: dict = self.model.get_user_message(user_message)
 
         self.conversation_history.append(struct_message)
         #self.display.reset_timer()
 
-        return self.model.process_message(self.conversation_history, live, self.temperature)
-
+        return self.model.process_message(self.conversation_history, live, self.temperature, self.enable_thinking)
 
     def manage_user_input(self, user_input: str) -> str | None:
         """
@@ -91,259 +188,24 @@ class ChatBot:
         if not user_input:
             return None
 
-        if user_input in ["/quit", "/exit"]:
-            return "exit"
+        # Use CommandManager to handle all commands
+        return self.command_manager.execute_command(user_input, self)
 
-        if user_input == "/clear":
-            self.conversation_history = [self.model.get_system_prompt()]
-            ui.show_clear_confirmation()
-            return None
-
-        if user_input == "/history":
-            ui.show_history(self.conversation_history)
-            return None
-
-        if user_input.startswith("/save"):
-            parts = user_input.split(maxsplit=1)
-            filename = parts[1] if len(parts) > 1 else None
-            self.save_conversation(filename)
-            return None
-
-        if user_input.startswith("/load"):
-            parts = user_input.split(maxsplit=1)
-            if len(parts) > 1:
-                self.load_conversation(parts[1])
-            else:
-                ui.show_error("Usage: /load <filename>")
-            return None
-
-        if user_input.startswith("/model"):
-            parts = user_input.split(maxsplit=1)
-            if len(parts) < 2:
-                ui.show_error("Usage: /model <model_name>")
-                return None
-
-            new_model_name = parts[1]
-
-            # Unload current model
-            try:
-                self.model.ollama_client.generate(model=self.model.name, keep_alive=0)
-                ui.show_clear_confirmation()
-                ui.show_model_unload_start()
-                sleep(2)
-            except Exception as e:
-                ui.show_error(f"Failed to unload model: {e}")
-
-            # Load new model
-            from .models import ModelFactory
-            new_model = ModelFactory.create_model(
-                new_model_name,
-                ollama_client=self.model.ollama_client,
-                tool_executor=self.model.tool_executor
-            )
-
-            if new_model is None:
-                ui.show_error(f"Failed to load model: {new_model_name}")
-                return None
-
-            self.model = new_model
-            self.conversation_history = [self.model.get_system_prompt()]
-            ui.show_model_switch_success(new_model_name)
-
-
-        if user_input.startswith("/unload"):
-            try:
-                # Properly unload the model from VRAM by calling generate with keep_alive=0
-                self.model.ollama_client.generate(model=self.model.name, keep_alive=0)
-                ui.show_model_unload_success()
-                self.model.name = "Unloaded"
-            except Exception as e:
-                ui.show_error(f"Failed to unload model: {e}")
-            return None
-
-        if user_input.startswith("/pull"):
-            parts = user_input.split(maxsplit=1)
-            if len(parts) < 2:
-                ui.show_error("Usage: /pull <model_name>")
-                return None
-
-            model_name = parts[1]
-            ui.show_pull_start(model_name)
-
-            try:
-                # Pull model with streaming progress
-                from rich.progress import Progress, SpinnerColumn, TextColumn, BarColumn, DownloadColumn, TransferSpeedColumn, TimeRemainingColumn
-                console = Console()
-
-                with Progress(
-                    SpinnerColumn(),
-                    TextColumn("[progress.description]{task.description}"),
-                    BarColumn(),
-                    DownloadColumn(),
-                    TransferSpeedColumn(),
-                    TimeRemainingColumn(),
-                    console=console
-                ) as progress:
-                    task = progress.add_task(f"Downloading {model_name}", total=None)
-
-                    for chunk in self.model.ollama_client.pull(model_name, stream=True):
-                        if 'total' in chunk and 'completed' in chunk:
-                            progress.update(task, total=chunk['total'], completed=chunk['completed'])
-                        elif 'status' in chunk:
-                            progress.update(task, description=f"{chunk['status']}")
-
-                ui.show_pull_success(model_name)
-
-            except Exception as e:
-                ui.show_error(f"Failed to pull model: {e}")
-
-            return None
-
-        if user_input.startswith("/info"):
-            parts = user_input.split(maxsplit=1)
-            if len(parts) < 2:
-                ui.show_error("Usage: /info <model_name>")
-                return None
-
-            model_name = parts[1]
-
-            try:
-                # Get model info from Ollama
-                model_info = self.model.ollama_client.show(model_name)
-                ui.show_model_info(model_name, model_info)
-
-            except Exception as e:
-                ui.show_error(f"Failed to get model info: {e}")
-
-            return None
-
-        if user_input.startswith("/temperature"):
-            parts = user_input.split(maxsplit=1)
-            if len(parts) < 2:
-                ui.show_error(f"Current temperature: {self.temperature}\nUsage: /temperature <value> (0.0 to 2.0)")
-                return None
-
-            try:
-                new_temp = float(parts[1])
-                if not 0.0 <= new_temp <= 2.0:
-                    ui.show_error("Temperature must be between 0.0 and 2.0")
-                    return None
-
-                self.temperature = new_temp
-                ui.show_temperature_change(new_temp)
-            except ValueError:
-                ui.show_error("Temperature must be a number")
-
-            return None
-
-        if user_input == "/validate":
-            # Toggle validation status
-            current_status = self.model.tool_executor.require_confirmation
-            self.model.tool_executor.require_confirmation = not current_status
-            self.require_confirmation = self.model.tool_executor.require_confirmation
-            ui.show_validation_change(self.require_confirmation)
-            return None
-
-        return user_input
-
-    def _serialize_history(self, history: list) -> list:
-        """Convert conversation history to JSON-serializable format"""
-        serialized = []
-        for msg in history:
-            serialized_msg = {}
-            for key, value in msg.items():
-                if key == "tool_calls":
-                    # Convert tool_calls objects to dictionaries
-                    serialized_msg[key] = [
-                        {
-                            "function": {
-                                "name": tc.function.name if hasattr(tc.function, 'name') else tc["function"]["name"],
-                                "arguments": tc.function.arguments if hasattr(tc.function, 'arguments') else tc["function"]["arguments"]
-                            }
-                        } if hasattr(tc, 'function') else tc
-                        for tc in value
-                    ]
-                elif key == "images":
-                    # Images are already serializable (list of paths)
-                    serialized_msg[key] = value
-                else:
-                    # Copy other fields as-is
-                    serialized_msg[key] = value
-            serialized.append(serialized_msg)
-        return serialized
-
-    def save_conversation(self, filename: str = None):
-        """Save conversation history to a file"""
-        import json
-        import os
-        from datetime import datetime
-
-        # Create directory if it doesn't exist
-        conversations_dir = ".claudette/conversations"
-        os.makedirs(conversations_dir, exist_ok=True)
-
-        # Generate filename if not provided
-        if filename is None:
-            timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
-            filename = f"conversation_{timestamp}.json"
-        elif not filename.endswith('.json'):
-            filename = f"{filename}.json"
-
-        # Full path
-        filepath = os.path.join(conversations_dir, filename)
-
-        try:
-            # Serialize history to JSON-compatible format
-            serialized_history = self._serialize_history(self.conversation_history)
-
-            with open(filepath, 'w', encoding='utf-8') as f:
-                json.dump(serialized_history, f, indent=2, ensure_ascii=False)
-            ui.show_save_confirmation(filepath)
-        except Exception as e:
-            ui.show_error(f"Failed to save conversation: {str(e)}")
-
-    def load_conversation(self, filename: str):
-        """Load conversation history from a file"""
-        import json
-        import os
-
-        conversations_dir = ".claudette/conversations"
-
-        # Add .json extension if not present
-        if not filename.endswith('.json'):
-            filename = f"{filename}.json"
-
-        # Full path
-        filepath = os.path.join(conversations_dir, filename)
-
-        try:
-            if not os.path.exists(filepath):
-                ui.show_error(f"File not found: {filepath}")
-                return
-
-            with open(filepath, 'r', encoding='utf-8') as f:
-                loaded_history = json.load(f)
-
-            self.conversation_history = loaded_history
-            ui.show_load_confirmation(filepath, len(loaded_history))
-        except json.JSONDecodeError:
-            ui.show_error(f"Invalid JSON file: {filepath}")
-        except Exception as e:
-            ui.show_error(f"Failed to load conversation: {str(e)}")
 
     def discuss(self):
-        # Create command completer
-        commands = ['/exit', '/quit', '/clear', '/history', '/save', '/load', '/model', '/unload', '/pull', '/info', '/temperature', '/validate']
-        command_completer = WordCompleter(
-            commands,
-            ignore_case=True,
-            sentence=True,
-            match_middle=False
+        # Create combined completer for commands (/) and files (@)
+        combined_completer = CommandAndFileCompleter(
+            self.command_manager.get_command_names()
         )
 
+        # Setup history file in user's home .claudette directory
+        history_dir = Path.home() / ".claudette"
+        history_dir.mkdir(exist_ok=True)
+        history_file = history_dir / "claudette_history.txt"
+
         session = PromptSession(
-            history=FileHistory("claudette_history.txt"),
-            completer=command_completer,
+            history=FileHistory(str(history_file)),
+            completer=combined_completer,
             complete_while_typing=True
         )
         self.conversation_history.append(self.model.get_system_prompt())
@@ -351,7 +213,6 @@ class ChatBot:
 
         # Create bottom toolbar function
         def get_bottom_toolbar():
-            import os
             token_count = ui.get_conversation_token_count(self.conversation_history)
 
             # Build toolbar components
@@ -369,6 +230,18 @@ class ChatBot:
             # Add model name with robot emoji
             toolbar_parts.append(f'🤖 {self.model.name}')
 
+            # Add vision support indicator with camera emoji
+            if self.model.image_mode:
+                toolbar_parts.append('<ansi color="#10B981">📷 ON</ansi>')
+            else:
+                toolbar_parts.append('<ansi color="#6B7280">📷 OFF</ansi>')
+
+            # Add tools support indicator with wrench emoji
+            if self.model.tool_executor and self.model.tool_executor.tools_definition:
+                toolbar_parts.append(f'<ansi color="#10B981">🔧 ON</ansi>')
+            else:
+                toolbar_parts.append('<ansi color="#6B7280">🔧 OFF</ansi>')
+
             # Add temperature with thermometer emoji
             toolbar_parts.append(f'🌡️ {self.temperature}')
 
@@ -377,6 +250,18 @@ class ChatBot:
                 toolbar_parts.append('<ansi color="#10B981">🛡️ ON </ansi>')
             else:
                 toolbar_parts.append('<ansi color="#EF4444">🛡️ OFF </ansi>')
+
+            # Add thinking mode status with brain emoji
+            if self.enable_thinking:
+                toolbar_parts.append('<ansi color="#10B981">🧠 ON </ansi>')
+            else:
+                toolbar_parts.append('<ansi color="#6B7280">🧠 OFF </ansi>')
+
+            # Add reprompting mode status with sparkles emoji
+            if self.enable_reprompting:
+                toolbar_parts.append('<ansi color="#F59E0B">✨ ON </ansi>')
+            else:
+                toolbar_parts.append('<ansi color="#6B7280">✨ OFF </ansi>')
 
             # Add token count with percentage and status indicator
             max_context = self.model.max_token_context
@@ -408,16 +293,18 @@ class ChatBot:
                     continue
                 elif user_input == "exit":
                     break
-
+                try:
                 # Get response from the chatbot
-                with Live(console=console, refresh_per_second=10, transient=True) as live:
-                    response, elapsed = self.chat(live, user_input)
-                    ui.show_response(console, elapsed, response)
+                    with Live(console=console, refresh_per_second=10, transient=True) as live:
+                        response, elapsed, thinking_content = self.chat(live, user_input)
+                        ui.show_response(console, elapsed, response, thinking_content)
+                except ResponseError as e:
+                    ui.show_error(f"Model {self.model.name} not found! {e}")
 
             except KeyboardInterrupt:
                 ui.show_goodbye()
                 break
-        ui.show_goodbye()
+        #ui.show_goodbye()
 
             # except Exception as e:
             #     ui.show_error(str(e))

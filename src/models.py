@@ -1,53 +1,260 @@
 from time import time
 from typing import Dict
-import json
+from collections import Counter
+from datetime import datetime
 import os
+
+import ollama
+import yaml
+import json
+import re
 from rich.live import Live
 
 from .tools import ToolExecutor
 from . import ui
 from .image_utils import extract_and_validate_images
+from .utils import StatsManager
 
 
 class Model:
 
     def __init__(self, name: str, image_mode: bool, tool_executor: ToolExecutor | None, system_prompt: str,
-                 ollama_client: object, max_token_context: int) -> None:
+                 ollama_client: ollama.Client, max_token_context: int) -> None:
         self.name = name
         self.image_mode = image_mode
         self.tool_executor = tool_executor
         self.system_prompt = system_prompt
         self.ollama_client = ollama_client
         self.max_token_context = max_token_context
+        self.stats_manager = StatsManager()
+
+    def _get_max_thinking_tokens(self) -> int:
+        """
+        Get maximum thinking tokens based on model name.
+        Models with explicit reasoning capabilities get higher limits.
+        """
+        model_name_lower = self.name.lower()
+
+        # Reasoning models get higher limits
+        if "r1" in model_name_lower or "deepseek-r1" in model_name_lower:
+            if "1.5b" in model_name_lower or "1b" in model_name_lower:
+                return 2048  # Smaller reasoning model
+            elif "7b" in model_name_lower:
+                return 4096  # Larger reasoning model
+            else:
+                return 4096  # Default for reasoning models
+
+        # Regular models get stricter limits
+        if "30b" in model_name_lower or "32b" in model_name_lower:
+            return 3000  # Large models
+        elif "14b" in model_name_lower or "16b" in model_name_lower:
+            return 2000  # Medium models
+        else:
+            return 1500  # Small models (4b, 6.7b, 8b)
+
+    @staticmethod
+    def _detect_circular_thinking(thinking_content: str) -> bool:
+        """
+        Detect circular reasoning patterns in thinking content.
+        Returns True if circular patterns are detected.
+        """
+        # Split into sentences
+        sentences = thinking_content.split('.')
+        if len(sentences) < 10:
+            return False  # Too short to detect patterns
+
+        # Look for repetitive phrases (last 20% of content)
+        recent_portion = int(len(sentences) * 0.2)
+        recent_sentences = sentences[-recent_portion:] if recent_portion > 0 else sentences
+
+        # Check for common circular reasoning indicators
+        circular_indicators = [
+            "wait", "actually", "but then", "on second thought",
+            "however", "let me reconsider", "thinking about it",
+            "on the other hand", "but wait", "hmm"
+        ]
+
+        # Count occurrences of circular indicators in recent portion
+        indicator_count = sum(
+            1 for sentence in recent_sentences
+            for indicator in circular_indicators
+            if indicator in sentence.lower()
+        )
+
+        # If more than 40% of recent sentences have circular indicators, flag it
+        threshold = len(recent_sentences) * 0.4
+        if indicator_count > threshold:
+            return True
+
+        # Check for repeated similar sentences (cosine similarity would be better, but this is simpler)
+        # Look for sentences that appear multiple times
+        normalized_sentences = [s.strip().lower() for s in recent_sentences if s.strip()]
+        sentence_counts = Counter(normalized_sentences)
+
+        # If any sentence appears more than 3 times, it's likely circular
+        for count in sentence_counts.values():
+            if count >= 3:
+                return True
+
+        return False
+
+    @staticmethod
+    def _parse_json_tool_call(content: str) -> dict | None:
+        """
+        Parse JSON tool call from content when model generates JSON instead of using tool_calls.
+        Also handles XML-like format: <function=tool_name>{"arg": "value"}</tool_call>
+
+        Returns:
+            dict with 'function' key containing 'name' and 'arguments', or None if not a tool call
+        """
+        if not content.strip():
+            return None
+
+        # Try to parse XML-like format: <function=tool_name>...</tool_call>
+        xml_pattern = r'<function=([^>]+)>\s*(.*?)\s*</tool_call>'
+        xml_match = re.search(xml_pattern, content, re.DOTALL)
+        if xml_match:
+            tool_name = xml_match.group(1).strip()
+            args_str = xml_match.group(2).strip()
+
+            # Parse arguments if present (JSON format)
+            arguments = {}
+            if args_str:
+                try:
+                    arguments = json.loads(args_str)
+                except json.JSONDecodeError:
+                    pass  # Empty arguments
+
+            return {
+                'function': {
+                    'name': tool_name,
+                    'arguments': arguments
+                }
+            }
+
+        # Try to parse as JSON
+        try:
+            # Remove markdown code blocks if present
+            json_str = content.strip()
+            if json_str.startswith('```'):
+                json_str = re.sub(r'^```(?:json)?\s*', '', json_str)
+                json_str = re.sub(r'\s*```$', '', json_str)
+
+            parsed = json.loads(json_str)
+
+            # Check if it looks like a tool call (has 'name' and 'arguments' keys)
+            if isinstance(parsed, dict) and 'name' in parsed and 'arguments' in parsed:
+                return {
+                    'function': {
+                        'name': parsed['name'],
+                        'arguments': parsed['arguments']
+                    }
+                }
+        except (json.JSONDecodeError, KeyError):
+            pass
+
+        return None
 
 
-    def get_stream(self, conversation_history: list, keep_alive_duration: str = "15m", temperature: float = 0):
+    def get_stream(self, conversation_history: list, keep_alive_duration: str = "15m", temperature: float = 0, max_tokens: int | None = None, enable_thinking: bool = True):
+        options = {"temperature": temperature}
+
+        # Add max token limit if specified
+        if max_tokens:
+            options["num_predict"] = max_tokens
+
         stream = self.ollama_client.chat(
             model=self.name,
             messages=conversation_history,
             tools=self.tool_executor.tools_definition if self.tool_executor else None,
             stream=True,
             keep_alive=keep_alive_duration,
-            options={"temperature": temperature}
+            options=options,
+            think=enable_thinking
         )
         return stream
 
-    def process_message(self, conversation_history: list, live: Live, temperature: float = 0) -> (str, float):
+    def _track_and_return(self, conversation_history: list, tokens_before: int, elapsed_time: float, response: str, thinking_content: str) -> (str, float, str):
+        """Helper to track stats and return response"""
+        # Calculate total tokens used in this request
+        tokens_after = ui.get_conversation_token_count(conversation_history)
+        total_tokens_used = tokens_after - tokens_before
+
+        # Calculate thinking tokens (approximate: 4 chars per token)
+        thinking_tokens = len(thinking_content) // 4 if thinking_content else 0
+
+        # Response tokens = total - thinking tokens
+        response_tokens = max(0, total_tokens_used - thinking_tokens)
+
+        # Update stats with separate thinking and response tokens
+        self.stats_manager.update_stats(self.name, thinking_tokens, response_tokens, elapsed_time)
+
+        return response, elapsed_time, thinking_content
+
+    def process_message(self, conversation_history: list, live: Live, temperature: float = 0, enable_thinking: bool = True) -> (str, float):
         start_time = time()
+        # Track tokens before request
+        tokens_before = ui.get_conversation_token_count(conversation_history)
+
+        # Configuration: Maximum thinking tokens allowed (configurable per model size)
+        MAX_THINKING_TOKENS = self._get_max_thinking_tokens()
+
+        # Set a hard token limit: thinking + response buffer
+        # This prevents the model from generating indefinitely
+        MAX_TOTAL_TOKENS = MAX_THINKING_TOKENS + 2000  # +2000 for actual response
+
+        thinking_loop_count = 0
+        MAX_THINKING_LOOPS = 1  # Only retry once if model gives only thinking without answer
+
         while True:
             full_content = ""
+            thinking_content = ""
             tool_calls = []
 
             ui.show_thinking(full_content, live, start_time)
-            for chunk in self.get_stream(conversation_history, temperature=temperature):
+
+            # Use num_predict to hard-limit total generation
+            for chunk in self.get_stream(conversation_history, temperature=temperature, max_tokens=MAX_TOTAL_TOKENS, enable_thinking=enable_thinking):
                 message = chunk.get("message", {})
                 if content := message.get("content"):
                     full_content += content
-                    ui.show_thinking(full_content, live, start_time)
+                    ui.show_thinking(full_content, live, start_time, thinking_content )
+                elif thinking := message.get("thinking"):
+                    thinking_content += thinking
+                    ui.show_thinking(full_content, live, start_time, thinking_content)
                 elif message.get("tool_calls"):
                     tool_calls = message["tool_calls"]
                 else:
-                    ui.show_thinking(full_content, live, start_time)
+                    ui.show_thinking(full_content, live, start_time, thinking_content)
+
+            # Check if we got a response or just endless thinking
+            current_thinking_tokens = len(thinking_content) // 4
+
+            # If we got mostly thinking and little/no content, retry with stricter prompt
+            if current_thinking_tokens > MAX_THINKING_TOKENS * 0.9 and not full_content and not tool_calls:
+                thinking_loop_count += 1
+
+                if thinking_loop_count >= MAX_THINKING_LOOPS:
+                    # Force conclusion - model is stuck
+                    elapsed = time() - start_time
+                    response = f"[⚠️ Model exceeded thinking limit ({current_thinking_tokens} tokens) - provide a direct answer next time]\n\nBased on the analysis, I need to provide a direct answer but got stuck in thinking.\n"
+                    return self._track_and_return(conversation_history, tokens_before, elapsed, response, thinking_content)
+
+                # Try again with NO thinking allowed - force direct answer
+                conversation_history.append({
+                    "role": "system",
+                    "content": "STOP THINKING. Your previous response had excessive thinking. Answer the question DIRECTLY and CONCISELY now."
+                })
+                # Lower token limit drastically for retry
+                MAX_TOTAL_TOKENS = 1000
+                continue
+
+            # If no native tool_calls but content looks like a JSON tool call, parse it
+            if not tool_calls and full_content and self.tool_executor:
+                parsed_tool = self._parse_json_tool_call(full_content)
+                if parsed_tool:
+                    tool_calls = [parsed_tool]
+                    full_content = ""  # Clear content since it was a tool call
 
             # Create the complete message for history
             assistant_message = self.get_assistant_message(full_content, tool_calls)
@@ -56,11 +263,20 @@ class Model:
             conversation_history.append(assistant_message)
 
             if not tool_calls:
-                return f"{full_content}\n", time() - start_time
+                elapsed = time() - start_time
+                response = f"{full_content}\n"
+                return self._track_and_return(conversation_history, tokens_before, elapsed, response, thinking_content)
+
+            # Stop Live display before processing tool calls (some tools need user input)
+            live.stop()
+
             # Process tool calls
             for tool_call in tool_calls:
                 tool_result = self.call_tool(tool_call)
                 conversation_history.append(self.tool_result_message(tool_result))
+
+            # Restart Live display for next model response
+            live.start()
             # Continue the loop to get the next response from the model
 
 
@@ -95,9 +311,24 @@ class Model:
         }
 
     def get_system_prompt(self) -> dict:
+        # Get current date and time for temporal context
+        now = datetime.now()
+        current_date = now.strftime("%Y-%m-%d")
+        day_of_week = now.strftime("%A")
+
+        # Inject temporal context into system prompt
+        temporal_context = f"""
+CURRENT TEMPORAL CONTEXT:
+- Date: {current_date}
+- Day of Week: {day_of_week}
+- Timezone: System local time
+
+Use this temporal information to understand the current context when the user refers to time-sensitive concepts like "today", "yesterday", "this week", "this month", "recently", etc.
+"""
+
         return {
-            "role": "system",
-            "content": self.system_prompt
+            "role": "user",
+            "content": temporal_context + "\n" + self.system_prompt
         }
 
 
@@ -117,39 +348,62 @@ class VisionModel(Model):
         return message
 
 
-
-class DeepseekCodeV2(Model):
-
-    def __init__(self, ollama_client):
-        super().__init__("deepseek-coder-v2:16b", image_mode = False, tool_executor = None, system_prompt = "Hello", ollama_client = ollama_client, max_token_context=160000)
-
-class Qwen3_4b(Model):
-
-    def __init__(self, ollama_client, tool_executor):
-        super().__init__("qwen3:4b", image_mode = False, tool_executor = tool_executor, system_prompt = "Hello", ollama_client = ollama_client, max_token_context=256000)
-
-
 class ModelFactory:
     """Factory to create model instances based on model name"""
 
     @staticmethod
     def _load_config(name: str) -> dict | None:
-        """Load model configuration from JSON file"""
-        import json
-        import os
+        """Load model configuration from YAML file and merge with common prompts"""
+        # Try to find the config file in current directory first, then in home directory
+        possible_paths = [
+            os.path.join(".claudette", "models_config.yaml"),
+            os.path.join(os.path.expanduser("~"), ".claudette", "models_config.yaml")
+        ]
 
-        config_path = os.path.join(".claudette", "models_config.json")
+        for config_path in possible_paths:
+            try:
+                with open(config_path, 'r', encoding='utf-8') as f:
+                    config = yaml.safe_load(f)
 
-        try:
-            with open(config_path, 'r', encoding='utf-8') as f:
-                config = json.load(f)
+                models = config.get("models", {})
+                if name in models:
+                    model_config = models[name].copy()
 
-            models = config.get("models", {})
-            if name in models:
-                return models[name]
+                    # Merge common prompts if they exist
+                    if 'system_prompt' in model_config:
+                        common_prompts = config.get("common_prompts", {})
+                        if common_prompts:
+                            # Build the full system prompt
+                            full_prompt = model_config['system_prompt']
 
-        except Exception as e:
-            print(f"Warning: Failed to load models_config.json: {e}")
+                            # Append common sections in order
+                            if 'tool_usage_protocol' in common_prompts:
+                                full_prompt += "\n\n" + common_prompts['tool_usage_protocol']
+
+                            if 'current_events_protocol' in common_prompts:
+                                full_prompt += "\n\n" + common_prompts['current_events_protocol']
+
+                            if 'verification_protocol' in common_prompts:
+                                full_prompt += "\n\n" + common_prompts['verification_protocol']
+
+                            if 'anti_loop_safeguards' in common_prompts:
+                                full_prompt += "\n\n" + common_prompts['anti_loop_safeguards']
+
+                            if 'generic_instructions' in common_prompts:
+                                # Only append if it contains actual instructions (not just placeholder)
+                                generic = common_prompts['generic_instructions'].strip()
+                                if generic and not "(This section is reserved" in generic:
+                                    full_prompt += "\n\n" + common_prompts['generic_instructions']
+
+                            model_config['system_prompt'] = full_prompt
+
+                    return model_config
+
+            except FileNotFoundError:
+                continue  # Try next path
+            except Exception as e:
+                print(f"Warning: Failed to load models_config.yaml from {config_path}: {e}")
+                continue
 
         return None
 
@@ -210,7 +464,6 @@ class ModelFactory:
 
         # Use default values if config not found
         system_prompt = config.get('system_prompt', 'You are a helpful AI assistant.') if config else 'You are a helpful AI assistant.'
-        enable_tools = config.get('enable_tools', False) if config else False
 
         # Determine if should use VisionModel
         use_vision_model = ollama_info['supports_vision']
@@ -220,8 +473,8 @@ class ModelFactory:
 
         return klass_model(
             name=model_name,
-            image_mode=ollama_info['supports_vision'],
-            tool_executor=tool_executor if enable_tools and ollama_info['supports_tools'] else None,
+            image_mode=use_vision_model,
+            tool_executor=tool_executor if ollama_info['supports_tools'] else None,
             system_prompt=system_prompt,
             ollama_client=ollama_client,
             max_token_context=ollama_info['max_token_context'],
@@ -230,17 +483,24 @@ class ModelFactory:
     @staticmethod
     def get_available_models() -> list[str]:
         """Get list of available model names from config"""
-        import json
-        import os
 
-        config_path = os.path.join(".claudette", "models_config.json")
+        # Try to find the config file in current directory first, then in home directory
+        possible_paths = [
+            os.path.join(".claudette", "models_config.yaml"),
+            os.path.join(os.path.expanduser("~"), ".claudette", "models_config.yaml")
+        ]
 
-        try:
-            with open(config_path, 'r', encoding='utf-8') as f:
-                config = json.load(f)
-            return list(config.get("models", {}).keys())
-        except:
-            return []
+        for config_path in possible_paths:
+            try:
+                with open(config_path, 'r', encoding='utf-8') as f:
+                    config = yaml.safe_load(f)
+                return list(config.get("models", {}).keys())
+            except FileNotFoundError:
+                continue  # Try next path
+            except:
+                continue
+
+        return []
 
     @staticmethod
     def is_model_ready(name: str) -> bool:
