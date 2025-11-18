@@ -82,8 +82,8 @@ class ToolRegistry:
             return tool.execute(**arguments)
         except TypeError as e:
             return f"Error: Invalid arguments for {tool_name}: {str(e)}"
-        except Exception as e:
-            return f"Error executing {tool_name}: {str(e)}"
+        # except Exception as e:
+        #     return f"Error executing {tool_name}: {str(e)}"
 
     def get_tool(self, name: str) -> Tool | None:
         """Get a tool by name"""

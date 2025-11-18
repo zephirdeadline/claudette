@@ -4,7 +4,10 @@ Web Search Tool - Search the internet using DuckDuckGo
 
 import requests
 from bs4 import BeautifulSoup
-from ddgs import DDGS
+try:
+    from duckduckgo_search import DDGS
+except ImportError:
+    from ddgs import DDGS  # Fallback for older installations
 from .base import Tool
 
 
@@ -85,6 +88,7 @@ class WebSearchTool(Tool):
 
     def execute(self, query: str, max_results: int = 3, fetch_content: bool = True) -> str:
         """Search the web using DuckDuckGo"""
+        from http.client import HTTPException
         try:
             with DDGS() as ddgs:
                 # Try Instant Answers first (for queries like "current date", "2+2", etc.)
@@ -108,7 +112,11 @@ class WebSearchTool(Tool):
                     pass
 
                 # Fall back to regular web search
-                results = list(ddgs.text(query, max_results=max_results))
+                try:
+                    results = list(ddgs.text(query, max_results=max_results))
+                except (KeyError, AttributeError) as e:
+                    # API might have changed, try alternative method
+                    return f"Web search temporarily unavailable (API error: {str(e)}). Please try again later or rephrase your query."
 
             if not results:
                 return "No results found."
@@ -144,5 +152,5 @@ class WebSearchTool(Tool):
             )
 
             return "\n".join(formatted_results)
-        except Exception as e:
+        except HTTPException as e:
             return f"Error performing web search: {str(e)}"

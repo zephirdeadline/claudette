@@ -25,107 +25,43 @@ class InitCommand(Command):
         ui.show_info("🚀 Starting project analysis for AGENTS.md generation...")
         console.print()
 
-        # Create the analysis prompt
-        analysis_prompt = """You are tasked with creating a comprehensive AGENTS.md file for this project.
+        # Create the analysis prompt (ultra-direct with concrete examples)
+        analysis_prompt = """⚠️ MANDATORY ACTION REQUIRED ⚠️
 
-This file will be used by AI assistants (LLMs) to understand the entire project architecture, structure, and conventions.
+DO NOT ANALYZE. DO NOT EXPLAIN. EXECUTE THESE TOOLS NOW:
 
-**Your mission:**
-1. Explore the project directory structure thoroughly
-2. Identify all key components, modules, and their relationships
-3. Document the project architecture, design patterns, and coding conventions
-4. Create a clear, structured AGENTS.md file that any LLM can read and understand
+1. execute_command: {"command": "find . -type f -name '*.py' | head -30"}
+2. read_file: {"file_path": "./README.md"}
+3. read_file: {"file_path": "./main.py"}
+4. read_file: {"file_path": "./requirements.txt"}
+5. write_file: {"file_path": "./AGENTS.md", "content": "[YOUR CONTENT]"}
 
-**Instructions for exploration:**
-- Use `execute_command` tool to run commands like `find`, `tree`, `ls -R`, or `git ls-files` to map the project structure
-- Use `read_file` tool to read key files (README, main entry points, configuration files, core modules)
-- Analyze the code structure, dependencies, and patterns used
-- Identify the technology stack, frameworks, and libraries
-
-**AGENTS.md Structure (you MUST follow this structure):**
-
-```markdown
-# Project: [Project Name]
-
-## 🎯 Project Overview
-[Brief description of what this project does and its purpose]
-
-## 📁 Project Structure
-[Detailed directory tree with explanations of each major directory/file]
-
-## 🏗️ Architecture
-[Explanation of the overall architecture, design patterns, and how components interact]
-
-## 🔧 Core Components
-[Description of each main component/module with:
-- Purpose
-- Key files
-- Responsibilities
-- Dependencies]
-
-## 🛠️ Technology Stack
-- **Language**: [Programming language and version]
-- **Framework**: [Main framework if any]
-- **Key Libraries**: [List of important dependencies]
-- **Tools**: [Build tools, package managers, etc.]
-
-## 📝 Coding Conventions
-[Document any coding standards, naming conventions, or patterns observed in the codebase]
-
-## 🔗 File Relationships
-[Explain how files/modules import and depend on each other]
-
-## 🚀 Entry Points
-[Main entry points of the application and how to run it]
-
-## 📦 Dependencies & Configuration
-[Key configuration files, environment variables, and how dependencies are managed]
-
-## 💡 Important Notes for AI Assistants
-[Any specific guidelines, gotchas, or important context that an AI should know when working with this codebase]
-
-## 📚 Functions & Code Map
-**CRITICAL: This section prevents code duplication when an LLM works on this project.**
-
-For each module/file in the codebase, list all available functions, classes, and methods with their exact location.
-This allows the LLM to quickly find existing functionality and avoid reimplementing code.
-
-Format:
+THE FILE AGENTS.md MUST CONTAIN:
 ```
-### [Module/File Path]
-- `function_name(args)` - Line X - [Brief description of what it does]
-- `ClassName` - Line Y - [Brief description]
-  - `ClassName.method_name(args)` - Line Z - [Brief description]
+# Project: [name from README or main.py]
+
+## Overview
+[1-2 sentences from README]
+
+## Structure
+[paste output from find command]
+
+## Tech Stack
+- Python
+- [libraries from requirements.txt]
+
+## Entry Point
+main.py
+
+## Functions Map
+[For EACH .py file found: list all functions/classes with line numbers]
 ```
 
-Example:
-```
-### src/utils/helpers.py
-- `parse_config(config_path: str) -> dict` - Line 15 - Parses YAML configuration files
-- `validate_input(data: str) -> bool` - Line 42 - Validates user input against schema
-- `FileHandler` - Line 67 - Handles file operations
-  - `FileHandler.read(path: str) -> str` - Line 71 - Reads file content
-  - `FileHandler.write(path: str, content: str)` - Line 89 - Writes content to file
+⚠️ WARNING: If you respond with explanations instead of using tools, you FAILED the task.
+⚠️ SUCCESS = AGENTS.md file exists on disk after you finish
+⚠️ FAILURE = No file created
 
-### src/models/base.py
-- `BaseModel` - Line 10 - Abstract base class for all models
-  - `BaseModel.process(input)` - Line 25 - Process input through the model
-  - `BaseModel.validate()` - Line 58 - Validates model configuration
-```
-
-**Why this matters:**
-- When an LLM needs to add functionality, it can first check this map to see if similar code exists
-- Prevents duplicate implementations of the same logic
-- Enables code reuse and maintains DRY principles
-- Helps the LLM understand what utilities are already available
-```
-
-**Now, begin your exploration and create the AGENTS.md file.**
-Use the tools available to you (execute_command, read_file, write_file) to explore the project and write a comprehensive AGENTS.md file in the current directory.
-
-Be thorough, precise, and ensure the documentation is clear enough that any LLM reading it can understand the entire project structure without needing to explore the codebase themselves.
-
-**IMPORTANT: You MUST include the "Functions & Code Map" section with a complete inventory of all functions, classes, and methods with their line numbers and locations. This is critical to prevent code duplication.**"""
+START EXECUTING TOOLS IMMEDIATELY."""
 
         try:
             # Create a temporary conversation with the analysis prompt
@@ -138,7 +74,7 @@ Be thorough, precise, and ensure the documentation is clear enough that any LLM 
                 response, elapsed, thinking_content = chatbot.model.process_message(
                     temp_history,
                     live,
-                    temperature=0.1,  # Low temperature for more focused analysis
+                    temperature=0.7,  # Higher temperature for tool usage initiative
                     enable_thinking=chatbot.enable_thinking
                 )
 

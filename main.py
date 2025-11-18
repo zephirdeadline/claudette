@@ -64,8 +64,8 @@ Examples:
     parser.add_argument(
         "--model", "-m",
         type=str,
-        default="qwen3:4b",
-        help=f"Model name to use (default: qwen3:4b). Examples: qwen3:4b, deepseek-coder-v2:16b"
+        default="qwen3-coder:30b",
+        help=f"Model name to use (default: qwen3-coder:30b). Examples: qwen3:4b, deepseek-coder-v2:16b"
     )
 
     parser.add_argument(
