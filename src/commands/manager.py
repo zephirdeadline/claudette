@@ -24,6 +24,7 @@ from .temperature_command import TemperatureCommand
 from .thinking_command import ThinkingCommand
 from .unload_command import UnloadCommand
 from .validate_command import ValidateCommand
+from .test_command import TestCommand
 
 if TYPE_CHECKING:
     from ..chatbot import ChatBot
@@ -57,6 +58,7 @@ class CommandManager:
             SaveCommand(),
             StatsCommand(),
             TemperatureCommand(),
+            TestCommand(),
             ThinkingCommand(),
             UnloadCommand(),
             ValidateCommand(),

@@ -327,7 +327,7 @@ Use this temporal information to understand the current context when the user re
 """
 
         return {
-            "role": "user",
+            "role": "system",
             "content": temporal_context + "\n" + self.system_prompt
         }
 

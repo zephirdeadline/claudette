@@ -13,6 +13,7 @@ from prompt_toolkit import PromptSession
 from prompt_toolkit.history import FileHistory
 from prompt_toolkit.formatted_text import HTML
 from prompt_toolkit.completion import WordCompleter
+from prompt_toolkit.key_binding import KeyBindings
 
 from . import ui
 from .tools import ToolExecutor
@@ -203,10 +204,22 @@ Rewritten: "Hello, how are you?" (unchanged - already clear)
         history_dir.mkdir(exist_ok=True)
         history_file = history_dir / "claudette_history.txt"
 
+        # Create key bindings for Enter=submit, Shift+Enter=newline
+        kb = KeyBindings()
+
+        @kb.add('enter')
+        def _(event):
+            event.current_buffer.validate_and_handle()
+
+        @kb.add('escape', 'enter')  # Alt+Enter (more reliable than Shift+Enter)
+        def _(event):
+            event.current_buffer.insert_text('\n')
+
         session = PromptSession(
             history=FileHistory(str(history_file)),
             completer=combined_completer,
-            complete_while_typing=True
+            complete_while_typing=True,
+            key_bindings=kb
         )
         self.conversation_history.append(self.model.get_system_prompt())
         console = Console()
@@ -284,7 +297,8 @@ Rewritten: "Hello, how are you?" (unchanged - already clear)
                 # Minimal modern prompt with bottom toolbar and autocompletion
                 user_input = session.prompt(
                     HTML('<ansi color="#9CA3AF">  → </ansi>'),
-                    bottom_toolbar=get_bottom_toolbar
+                    bottom_toolbar=get_bottom_toolbar,
+                    multiline=True
                 ).strip()
 
                 user_input = self.manage_user_input(user_input)
