@@ -25,12 +25,24 @@ def serialize_history(history: list) -> list:
             if key == "tool_calls":
                 # Convert tool_calls objects to dictionaries
                 serialized_msg[key] = [
-                    {
-                        "function": {
-                            "name": tc.function.name if hasattr(tc.function, 'name') else tc["function"]["name"],
-                            "arguments": tc.function.arguments if hasattr(tc.function, 'arguments') else tc["function"]["arguments"]
+                    (
+                        {
+                            "function": {
+                                "name": (
+                                    tc.function.name
+                                    if hasattr(tc.function, "name")
+                                    else tc["function"]["name"]
+                                ),
+                                "arguments": (
+                                    tc.function.arguments
+                                    if hasattr(tc.function, "arguments")
+                                    else tc["function"]["arguments"]
+                                ),
+                            }
                         }
-                    } if hasattr(tc, 'function') else tc
+                        if hasattr(tc, "function")
+                        else tc
+                    )
                     for tc in value
                 ]
             elif key == "images":
@@ -62,7 +74,7 @@ def save_conversation(conversation_history: list, filename: str = None) -> str |
     if filename is None:
         timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
         filename = f"conversation_{timestamp}.yaml"
-    elif not filename.endswith('.yaml'):
+    elif not filename.endswith(".yaml"):
         filename = f"{filename}.yaml"
 
     # Full path
@@ -72,8 +84,10 @@ def save_conversation(conversation_history: list, filename: str = None) -> str |
         # Serialize history to YAML-compatible format
         serialized_history = serialize_history(conversation_history)
 
-        with open(filepath, 'w', encoding='utf-8') as f:
-            yaml.dump(serialized_history, f, default_flow_style=False, allow_unicode=True)
+        with open(filepath, "w", encoding="utf-8") as f:
+            yaml.dump(
+                serialized_history, f, default_flow_style=False, allow_unicode=True
+            )
         ui.show_save_confirmation(filepath)
         return filepath
     except Exception as e:
@@ -94,7 +108,7 @@ def load_conversation(filename: str) -> list | None:
     conversations_dir = ".claudette/conversations"
 
     # Add .yaml extension if not present
-    if not filename.endswith('.yaml'):
+    if not filename.endswith(".yaml"):
         filename = f"{filename}.yaml"
 
     # Full path
@@ -105,7 +119,7 @@ def load_conversation(filename: str) -> list | None:
             ui.show_error(f"File not found: {filepath}")
             return None
 
-        with open(filepath, 'r', encoding='utf-8') as f:
+        with open(filepath, "r", encoding="utf-8") as f:
             loaded_history = yaml.safe_load(f)
 
         ui.show_load_confirmation(filepath, len(loaded_history))

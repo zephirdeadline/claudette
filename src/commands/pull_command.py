@@ -3,7 +3,15 @@ Pull command - Download a model from Ollama
 """
 
 from rich.console import Console
-from rich.progress import Progress, SpinnerColumn, TextColumn, BarColumn, DownloadColumn, TransferSpeedColumn, TimeRemainingColumn
+from rich.progress import (
+    Progress,
+    SpinnerColumn,
+    TextColumn,
+    BarColumn,
+    DownloadColumn,
+    TransferSpeedColumn,
+    TimeRemainingColumn,
+)
 from .base import Command
 from .. import ui
 
@@ -15,7 +23,7 @@ class PullCommand(Command):
         super().__init__(
             name="pull",
             description="Download a model from Ollama",
-            usage="/pull <model_name>"
+            usage="/pull <model_name>",
         )
 
     def execute(self, chatbot, args):
@@ -36,14 +44,16 @@ class PullCommand(Command):
                 DownloadColumn(),
                 TransferSpeedColumn(),
                 TimeRemainingColumn(),
-                console=console
+                console=console,
             ) as progress:
                 task = progress.add_task(f"Downloading {model_name}", total=None)
 
                 for chunk in chatbot.model.ollama_client.pull(model_name, stream=True):
-                    if 'total' in chunk and 'completed' in chunk:
-                        progress.update(task, total=chunk['total'], completed=chunk['completed'])
-                    elif 'status' in chunk:
+                    if "total" in chunk and "completed" in chunk:
+                        progress.update(
+                            task, total=chunk["total"], completed=chunk["completed"]
+                        )
+                    elif "status" in chunk:
                         progress.update(task, description=f"{chunk['status']}")
 
             ui.show_pull_success(model_name)

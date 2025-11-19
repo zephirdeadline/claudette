@@ -17,7 +17,7 @@ class PromptCommand(Command):
         super().__init__(
             name="prompt",
             description="Display the current system prompt",
-            usage="/prompt"
+            usage="/prompt",
         )
 
     def execute(self, chatbot, args):
@@ -32,20 +32,23 @@ class PromptCommand(Command):
             return None
 
         # Display the system prompt in a nice panel
-        console.print(Panel(
-            Markdown(system_prompt, code_theme="monokai"),
-            title=f"[bold]System Prompt - {chatbot.model.name}[/bold]",
-            border_style="dim #9CA3AF",
-            box=box.ROUNDED,
-            padding=(1, 2)
-        ))
+        console.print(
+            Panel(
+                Markdown(system_prompt, code_theme="monokai"),
+                title=f"[bold]System Prompt - {chatbot.model.name}[/bold]",
+                border_style="dim #9CA3AF",
+                box=box.ROUNDED,
+                padding=(1, 2),
+            )
+        )
         console.print()
 
         # Show prompt statistics
         from .. import ui as ui_module
+
         token_count = ui_module.get_token_count(system_prompt)
         char_count = len(system_prompt)
-        lines_count = system_prompt.count('\n') + 1
+        lines_count = system_prompt.count("\n") + 1
 
         stats_text = console.print(
             f"  [dim #9CA3AF]📊 Statistics:[/dim #9CA3AF] "

@@ -1,48 +1,47 @@
 """
 ChatBot class - Main chatbot implementation with Ollama integration
 """
-import os
-import sys
-from pathlib import Path
 
-import ollama
+import os
+from pathlib import Path
+from typing import Dict, List, Optional, Tuple
+
 from ollama import ResponseError
+from prompt_toolkit import PromptSession
+from prompt_toolkit.formatted_text import HTML
+from prompt_toolkit.history import FileHistory
+from prompt_toolkit.key_binding import KeyBindings
 from rich.console import Console
 from rich.live import Live
-from prompt_toolkit import PromptSession
-from prompt_toolkit.history import FileHistory
-from prompt_toolkit.formatted_text import HTML
-from prompt_toolkit.completion import WordCompleter
-from prompt_toolkit.key_binding import KeyBindings
 
 from . import ui
-from .tools import ToolExecutor
-from .models import Model
 from .commands import CommandManager
-from .utils import get_git_branch, save_conversation, load_conversation
 from .completers import CommandAndFileCompleter
+from .models import Model
+from .utils import get_git_branch
+
 
 class ChatBot:
     """Main chatbot class with Ollama integration"""
 
-    def __init__(self, model: Model):
+    def __init__(self, model: Model) -> None:
         """
         Initialize the chatbot
 
         Args:
-            host: Ollama host URL
-            model: Model name to use
-            image_mode: Enable image processing
-            require_confirmation: Require user confirmation for commands
-            tool_executor: ToolExecutor instance for handling tool calls
+            model: Model instance to use for chat interactions
         """
-        self.model = model
-        self.conversation_history = []
-        self.temperature = 0
-        self.require_confirmation = self.model.tool_executor.require_confirmation if self.model.tool_executor else True
-        self.enable_thinking = False
-        self.enable_reprompting = False
-        self.command_manager = CommandManager()
+        self.model: Model = model
+        self.conversation_history: List[Dict[str, any]] = []
+        self.temperature: float = 0.0
+        self.require_confirmation: bool = (
+            self.model.tool_executor.require_confirmation
+            if self.model.tool_executor
+            else True
+        )
+        self.enable_thinking: bool = False
+        self.enable_reprompting: bool = False
+        self.command_manager: CommandManager = CommandManager()
 
     def _reprompt_user_message(self, user_message: str) -> str:
         """
@@ -102,12 +101,15 @@ WRONG: "Je vais rechercher sur le web les dernières actualités..." (NEVER use 
 
 Original: "Hello, how are you?"
 Rewritten: "Hello, how are you?" (unchanged - already clear)
-"""
+""",
         }
 
         temp_history = [
             reprompt_instruction,
-            {"role": "user", "content": f"Reprompt, transform, keep the meaning of the user question and return only the result, nothing more {reprompt_instruction}: <UserMessage>{user_message}</UserMessage>"},
+            {
+                "role": "user",
+                "content": f"Reprompt, transform, keep the meaning of the user question and return only the result, nothing more {reprompt_instruction}: <UserMessage>{user_message}</UserMessage>",
+            },
         ]
 
         # Use streaming call for reprompting with live animation
@@ -126,7 +128,7 @@ Rewritten: "Hello, how are you?" (unchanged - already clear)
                 model=self.model.name,
                 messages=temp_history,
                 options={"temperature": 0.3},
-                stream=True
+                stream=True,
             ):
                 # Get content from chunk
                 message = chunk.get("message", {})
@@ -147,20 +149,23 @@ Rewritten: "Hello, how are you?" (unchanged - already clear)
             thinking_tokens=0,  # No thinking in reprompting
             response_tokens=total_tokens,
             time_seconds=elapsed_time,
-            is_reprompting=True
+            is_reprompting=True,
         )
 
         # Show the reprompted version to the user with token info
         if reprompted_message != user_message:
-            ui.show_reprompted_message(user_message, reprompted_message, total_tokens, elapsed_time)
+            ui.show_reprompted_message(
+                user_message, reprompted_message, total_tokens, elapsed_time
+            )
 
         return reprompted_message
 
-    def chat(self, live: Live, user_message: str) -> (str, float, str):
+    def chat(self, live: Live, user_message: str) -> Tuple[str, float, str]:
         """
         Send a message and get response with tool support
 
         Args:
+            live: Rich Live display instance
             user_message: The user's message
 
         Returns:
@@ -171,16 +176,21 @@ Rewritten: "Hello, how are you?" (unchanged - already clear)
             user_message = self._reprompt_user_message(user_message)
 
         # Prepare user message
-        struct_message: dict = self.model.get_user_message(user_message)
+        struct_message: Dict[str, any] = self.model.get_user_message(user_message)
 
         self.conversation_history.append(struct_message)
-        #self.display.reset_timer()
 
-        return self.model.process_message(self.conversation_history, live, self.temperature, self.enable_thinking)
+        return self.model.process_message(
+            self.conversation_history, live, self.temperature, self.enable_thinking
+        )
 
-    def manage_user_input(self, user_input: str) -> str | None:
+    def manage_user_input(self, user_input: str) -> Optional[str]:
         """
-        Process user input and handle commands.
+        Process user input and handle commands
+
+        Args:
+            user_input: User's input string
+
         Returns:
             - None: if should continue the loop (skip processing)
             - "exit": if should exit
@@ -192,37 +202,41 @@ Rewritten: "Hello, how are you?" (unchanged - already clear)
         # Use CommandManager to handle all commands
         return self.command_manager.execute_command(user_input, self)
 
+    def discuss(self) -> None:
+        """
+        Main discussion loop for interactive chat
 
-    def discuss(self):
+        Handles user input, command execution, and displays responses
+        """
         # Create combined completer for commands (/) and files (@)
-        combined_completer = CommandAndFileCompleter(
+        combined_completer: CommandAndFileCompleter = CommandAndFileCompleter(
             self.command_manager.get_command_names()
         )
 
         # Setup history file in user's home .claudette directory
-        history_dir = Path.home() / ".claudette"
+        history_dir: Path = Path.home() / ".claudette"
         history_dir.mkdir(exist_ok=True)
-        history_file = history_dir / "claudette_history.txt"
+        history_file: Path = history_dir / "claudette_history.txt"
 
-        # Create key bindings for Enter=submit, Shift+Enter=newline
-        kb = KeyBindings()
+        # Create key bindings for Enter=submit, Alt+Enter=newline
+        kb: KeyBindings = KeyBindings()
 
-        @kb.add('enter')
+        @kb.add("enter")
         def _(event):
             event.current_buffer.validate_and_handle()
 
-        @kb.add('escape', 'enter')  # Alt+Enter (more reliable than Shift+Enter)
+        @kb.add("escape", "enter")  # Alt+Enter (more reliable than Shift+Enter)
         def _(event):
-            event.current_buffer.insert_text('\n')
+            event.current_buffer.insert_text("\n")
 
-        session = PromptSession(
+        session: PromptSession = PromptSession(
             history=FileHistory(str(history_file)),
             completer=combined_completer,
             complete_while_typing=True,
-            key_bindings=kb
+            key_bindings=kb,
         )
         self.conversation_history.append(self.model.get_system_prompt())
-        console = Console()
+        console: Console = Console()
 
         # Create bottom toolbar function
         def get_bottom_toolbar():
@@ -233,15 +247,15 @@ Rewritten: "Hello, how are you?" (unchanged - already clear)
 
             # Add current directory with folder emoji (full path)
             cwd = os.getcwd()
-            toolbar_parts.append(f'📁 {cwd}')
+            toolbar_parts.append(f"📁 {cwd}")
 
             # Add git branch if available with branch emoji
             branch = get_git_branch()
             if branch:
-                toolbar_parts.append(f'🌿 {branch}')
+                toolbar_parts.append(f"🌿 {branch}")
 
             # Add model name with robot emoji
-            toolbar_parts.append(f'🤖 {self.model.name}')
+            toolbar_parts.append(f"🤖 {self.model.name}")
 
             # Add vision support indicator with camera emoji
             if self.model.image_mode:
@@ -256,7 +270,7 @@ Rewritten: "Hello, how are you?" (unchanged - already clear)
                 toolbar_parts.append('<ansi color="#6B7280">🔧 OFF</ansi>')
 
             # Add temperature with thermometer emoji
-            toolbar_parts.append(f'🌡️ {self.temperature}')
+            toolbar_parts.append(f"🌡️ {self.temperature}")
 
             # Add validation status with shield emoji
             if self.require_confirmation:
@@ -282,13 +296,15 @@ Rewritten: "Hello, how are you?" (unchanged - already clear)
 
             # Choose status indicator based on percentage
             if percentage < 50:
-                status = '<ansi>🟢</ansi>'  # Green - Low usage
+                status = "<ansi>🟢</ansi>"  # Green - Low usage
             elif percentage < 80:
-                status = '<ansi>🟡</ansi>'  # Amber - Medium usage
+                status = "<ansi>🟡</ansi>"  # Amber - Medium usage
             else:
-                status = '<ansi>🔴</ansi>'  # Red - High usage
+                status = "<ansi>🔴</ansi>"  # Red - High usage
 
-            toolbar_parts.append(f'{status} {token_count}/{max_context} ({percentage:.1f}%)')
+            toolbar_parts.append(
+                f"{status} {token_count}/{max_context} ({percentage:.1f}%)"
+            )
 
             return HTML(f'<ansi color="#9CA3AF"> {" | ".join(toolbar_parts)}</ansi>')
 
@@ -298,7 +314,7 @@ Rewritten: "Hello, how are you?" (unchanged - already clear)
                 user_input = session.prompt(
                     HTML('<ansi color="#9CA3AF">  → </ansi>'),
                     bottom_toolbar=get_bottom_toolbar,
-                    multiline=True
+                    multiline=True,
                 ).strip()
 
                 user_input = self.manage_user_input(user_input)
@@ -308,9 +324,13 @@ Rewritten: "Hello, how are you?" (unchanged - already clear)
                 elif user_input == "exit":
                     break
                 try:
-                # Get response from the chatbot
-                    with Live(console=console, refresh_per_second=10, transient=True) as live:
-                        response, elapsed, thinking_content = self.chat(live, user_input)
+                    # Get response from the chatbot
+                    with Live(
+                        console=console, refresh_per_second=10, transient=True
+                    ) as live:
+                        response, elapsed, thinking_content = self.chat(
+                            live, user_input
+                        )
                         ui.show_response(console, elapsed, response, thinking_content)
                 except ResponseError as e:
                     ui.show_error(f"Model {self.model.name} not found! {e}")
@@ -318,11 +338,3 @@ Rewritten: "Hello, how are you?" (unchanged - already clear)
             except KeyboardInterrupt:
                 ui.show_goodbye()
                 break
-        #ui.show_goodbye()
-
-            # except Exception as e:
-            #     ui.show_error(str(e))
-
-
-
-

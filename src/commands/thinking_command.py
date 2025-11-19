@@ -11,9 +11,7 @@ class ThinkingCommand(Command):
 
     def __init__(self):
         super().__init__(
-            name="thinking",
-            description="Toggle thinking mode",
-            usage="/thinking"
+            name="thinking", description="Toggle thinking mode", usage="/thinking"
         )
 
     def execute(self, chatbot, args):

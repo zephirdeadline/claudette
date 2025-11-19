@@ -19,31 +19,31 @@ class ListDirectoryTool(Tool):
                 "properties": {
                     "path": {
                         "type": "string",
-                        "description": "Path to the directory to list (absolute or relative). Defaults to current working directory if not specified."
+                        "description": "Path to the directory to list (absolute or relative). Defaults to current working directory if not specified.",
                     },
                     "show_hidden": {
                         "type": "boolean",
                         "description": "Whether to show hidden files (files starting with .). Default: false",
-                        "default": False
+                        "default": False,
                     },
                     "recursive": {
                         "type": "boolean",
                         "description": "Whether to list subdirectories recursively. Default: false",
-                        "default": False
+                        "default": False,
                     },
                     "max_depth": {
                         "type": "integer",
                         "description": "Maximum depth for recursive listing. Default: 3",
-                        "default": 3
-                    }
+                        "default": 3,
+                    },
                 },
-                "required": []
-            }
+                "required": [],
+            },
         )
 
     def _format_size(self, size_bytes: int) -> str:
         """Format file size in human-readable format"""
-        for unit in ['B', 'KB', 'MB', 'GB', 'TB']:
+        for unit in ["B", "KB", "MB", "GB", "TB"]:
             if size_bytes < 1024.0:
                 return f"{size_bytes:.1f}{unit}"
             size_bytes /= 1024.0
@@ -63,9 +63,12 @@ class ListDirectoryTool(Tool):
             # Get all entries
             entries = []
             try:
-                for entry in sorted(target_path.iterdir(), key=lambda x: (not x.is_dir(), x.name.lower())):
+                for entry in sorted(
+                    target_path.iterdir(),
+                    key=lambda x: (not x.is_dir(), x.name.lower()),
+                ):
                     # Skip hidden files if not requested
-                    if not show_hidden and entry.name.startswith('.'):
+                    if not show_hidden and entry.name.startswith("."):
                         continue
 
                     # Get entry info
@@ -96,17 +99,34 @@ class ListDirectoryTool(Tool):
                 result.extend(entries)
 
                 # Summary
-                dirs_count = sum(1 for e in target_path.iterdir() if e.is_dir() and (show_hidden or not e.name.startswith('.')))
-                files_count = sum(1 for e in target_path.iterdir() if e.is_file() and (show_hidden or not e.name.startswith('.')))
+                dirs_count = sum(
+                    1
+                    for e in target_path.iterdir()
+                    if e.is_dir() and (show_hidden or not e.name.startswith("."))
+                )
+                files_count = sum(
+                    1
+                    for e in target_path.iterdir()
+                    if e.is_file() and (show_hidden or not e.name.startswith("."))
+                )
                 result.append(f"{'-' * 80}")
-                result.append(f"Total: {dirs_count} director{'ies' if dirs_count != 1 else 'y'}, {files_count} file{'s' if files_count != 1 else ''}")
+                result.append(
+                    f"Total: {dirs_count} director{'ies' if dirs_count != 1 else 'y'}, {files_count} file{'s' if files_count != 1 else ''}"
+                )
 
             return "\n".join(result)
 
         except Exception as e:
             return f"Error listing directory: {str(e)}"
 
-    def _list_directory_recursive(self, path: str, show_hidden: bool, max_depth: int, current_depth: int = 0, prefix: str = "") -> list:
+    def _list_directory_recursive(
+        self,
+        path: str,
+        show_hidden: bool,
+        max_depth: int,
+        current_depth: int = 0,
+        prefix: str = "",
+    ) -> list:
         """List directory contents recursively"""
         if current_depth >= max_depth:
             return []
@@ -122,9 +142,12 @@ class ListDirectoryTool(Tool):
 
             # Get all entries
             try:
-                for entry in sorted(target_path.iterdir(), key=lambda x: (not x.is_dir(), x.name.lower())):
+                for entry in sorted(
+                    target_path.iterdir(),
+                    key=lambda x: (not x.is_dir(), x.name.lower()),
+                ):
                     # Skip hidden files if not requested
-                    if not show_hidden and entry.name.startswith('.'):
+                    if not show_hidden and entry.name.startswith("."):
                         continue
                     entries.append(entry)
             except PermissionError:
@@ -156,7 +179,7 @@ class ListDirectoryTool(Tool):
                         show_hidden,
                         max_depth,
                         current_depth + 1,
-                        prefix + extension
+                        prefix + extension,
                     )
                     results.extend(sub_results)
 
@@ -165,7 +188,13 @@ class ListDirectoryTool(Tool):
         except Exception as e:
             return [f"{prefix}[Error: {str(e)}]"]
 
-    def execute(self, path: str = ".", show_hidden: bool = False, recursive: bool = False, max_depth: int = 3) -> str:
+    def execute(
+        self,
+        path: str = ".",
+        show_hidden: bool = False,
+        recursive: bool = False,
+        max_depth: int = 3,
+    ) -> str:
         """
         List directory contents
 
@@ -189,7 +218,9 @@ class ListDirectoryTool(Tool):
                 result.append(f"{'=' * 80}")
                 result.append(f"📁 {target_path.name or str(target_path)}")
 
-                tree_lines = self._list_directory_recursive(str(target_path), show_hidden, max_depth)
+                tree_lines = self._list_directory_recursive(
+                    str(target_path), show_hidden, max_depth
+                )
                 result.extend(tree_lines)
 
                 result.append(f"{'=' * 80}")

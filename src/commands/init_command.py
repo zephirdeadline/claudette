@@ -15,7 +15,7 @@ class InitCommand(Command):
         super().__init__(
             name="init",
             description="Generate AGENTS.md file with project documentation",
-            usage="/init"
+            usage="/init",
         )
 
     def execute(self, chatbot, args):
@@ -75,7 +75,7 @@ START EXECUTING TOOLS IMMEDIATELY."""
                     temp_history,
                     live,
                     temperature=0.7,  # Higher temperature for tool usage initiative
-                    enable_thinking=chatbot.enable_thinking
+                    enable_thinking=chatbot.enable_thinking,
                 )
 
             # Show completion

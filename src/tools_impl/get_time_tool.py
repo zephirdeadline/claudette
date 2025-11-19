@@ -13,11 +13,7 @@ class GetCurrentTimeTool(Tool):
         super().__init__(
             name="get_current_time",
             description="Get the current date and time with detailed temporal information. Returns current date, time, day of week, and Unix timestamp.",
-            parameters={
-                "type": "object",
-                "properties": {},
-                "required": []
-            }
+            parameters={"type": "object", "properties": {}, "required": []},
         )
 
     def execute(self, **kwargs) -> str:

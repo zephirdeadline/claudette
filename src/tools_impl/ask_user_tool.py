@@ -24,15 +24,15 @@ class AskUserTool(Tool):
                 "properties": {
                     "question": {
                         "type": "string",
-                        "description": "The question to ask the user"
+                        "description": "The question to ask the user",
                     },
                     "context": {
                         "type": "string",
-                        "description": "Optional context explaining why you're asking this question"
-                    }
+                        "description": "Optional context explaining why you're asking this question",
+                    },
                 },
-                "required": ["question"]
-            }
+                "required": ["question"],
+            },
         )
 
     def execute(self, question: str, context: str = None) -> str:
@@ -44,11 +44,7 @@ class AskUserTool(Tool):
         question_text = Text()
         question_text.append("❓ ", style="bold #F59E0B")
         question_text.append("Question from AI", style="bold #E5E7EB")
-        console.print(Panel(
-            question_text,
-            border_style="#F59E0B",
-            padding=(0, 1)
-        ))
+        console.print(Panel(question_text, border_style="#F59E0B", padding=(0, 1)))
 
         # Show context if provided
         if context:
@@ -68,7 +64,9 @@ class AskUserTool(Tool):
         # Get user response with prompt_toolkit for history and navigation
         try:
             session = PromptSession(history=InMemoryHistory())
-            response = session.prompt(HTML('<ansi color="#9CA3AF">  Your answer: </ansi>')).strip()
+            response = session.prompt(
+                HTML('<ansi color="#9CA3AF">  Your answer: </ansi>')
+            ).strip()
             console.print()
 
             if not response:

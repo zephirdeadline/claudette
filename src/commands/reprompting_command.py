@@ -13,7 +13,7 @@ class RepromptingCommand(Command):
         super().__init__(
             name="reprompting",
             description="Toggle reprompting mode to rewrite user input for better LLM comprehension",
-            usage="/reprompting"
+            usage="/reprompting",
         )
 
     def execute(self, chatbot, args):

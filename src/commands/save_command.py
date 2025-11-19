@@ -13,7 +13,7 @@ class SaveCommand(Command):
         super().__init__(
             name="save",
             description="Save the conversation to a file",
-            usage="/save [filename]"
+            usage="/save [filename]",
         )
 
     def execute(self, chatbot, args):

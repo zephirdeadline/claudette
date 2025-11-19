@@ -13,7 +13,7 @@ class ModelsCommand(Command):
         super().__init__(
             name="models",
             description="List all available models",
-            usage="/models or /list"
+            usage="/models or /list",
         )
 
     def execute(self, chatbot, args):
@@ -32,7 +32,7 @@ class ListCommand(Command):
         super().__init__(
             name="list",
             description="List all available models",
-            usage="/list or /models"
+            usage="/list or /models",
         )
 
     def execute(self, chatbot, args):

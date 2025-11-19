@@ -10,9 +10,7 @@ class ExitCommand(Command):
 
     def __init__(self):
         super().__init__(
-            name="exit",
-            description="Exit the application",
-            usage="/exit or /quit"
+            name="exit", description="Exit the application", usage="/exit or /quit"
         )
 
     def execute(self, chatbot, args):
@@ -24,9 +22,7 @@ class QuitCommand(Command):
 
     def __init__(self):
         super().__init__(
-            name="quit",
-            description="Quit the application",
-            usage="/quit or /exit"
+            name="quit", description="Quit the application", usage="/quit or /exit"
         )
 
     def execute(self, chatbot, args):

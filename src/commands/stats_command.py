@@ -17,7 +17,7 @@ class StatsCommand(Command):
         super().__init__(
             name="stats",
             description="Display usage statistics per model",
-            usage="/stats [model_name]"
+            usage="/stats [model_name]",
         )
 
     def execute(self, chatbot: "ChatBot", args: list[str]) -> str | None:
@@ -34,7 +34,9 @@ class StatsCommand(Command):
                 console.print()
                 error_text = Text()
                 error_text.append("  ⚠️ ", style="bold #EF4444")
-                error_text.append(f"No statistics found for model: {model_name}", style="#E5E7EB")
+                error_text.append(
+                    f"No statistics found for model: {model_name}", style="#E5E7EB"
+                )
                 console.print(error_text)
                 console.print()
                 return None
@@ -49,7 +51,10 @@ class StatsCommand(Command):
                 console.print()
                 info_text = Text()
                 info_text.append("  ℹ️  ", style="bold #3B82F6")
-                info_text.append("No statistics available yet. Start chatting to generate stats!", style="#E5E7EB")
+                info_text.append(
+                    "No statistics available yet. Start chatting to generate stats!",
+                    style="#E5E7EB",
+                )
                 console.print(info_text)
                 console.print()
                 return None
@@ -71,20 +76,24 @@ class StatsCommand(Command):
         console.print()
 
         # Stats details
-        thinking_tokens = stats.get('total_thinking_tokens', 0)
-        response_tokens = stats.get('total_response_tokens', 0)
+        thinking_tokens = stats.get("total_thinking_tokens", 0)
+        response_tokens = stats.get("total_response_tokens", 0)
         total_tokens = thinking_tokens + response_tokens
-        total_time = stats.get('total_time_seconds', 0.0)
-        total_requests = stats.get('total_requests', 0)
+        total_time = stats.get("total_time_seconds", 0.0)
+        total_requests = stats.get("total_requests", 0)
 
         # Reprompting stats
-        reprompting_tokens = stats.get('reprompting_tokens', 0)
-        reprompting_requests = stats.get('reprompting_requests', 0)
-        reprompting_time = stats.get('reprompting_time_seconds', 0.0)
+        reprompting_tokens = stats.get("reprompting_tokens", 0)
+        reprompting_requests = stats.get("reprompting_requests", 0)
+        reprompting_time = stats.get("reprompting_time_seconds", 0.0)
 
         # Calculate averages
-        avg_thinking_tokens = thinking_tokens / total_requests if total_requests > 0 else 0
-        avg_response_tokens = response_tokens / total_requests if total_requests > 0 else 0
+        avg_thinking_tokens = (
+            thinking_tokens / total_requests if total_requests > 0 else 0
+        )
+        avg_response_tokens = (
+            response_tokens / total_requests if total_requests > 0 else 0
+        )
         avg_total_tokens = total_tokens / total_requests if total_requests > 0 else 0
         avg_time = total_time / total_requests if total_requests > 0 else 0
 
@@ -92,7 +101,9 @@ class StatsCommand(Command):
         hours = int(total_time // 3600)
         minutes = int((total_time % 3600) // 60)
         seconds = int(total_time % 60)
-        time_str = f"{hours}h {minutes}m {seconds}s" if hours > 0 else f"{minutes}m {seconds}s"
+        time_str = (
+            f"{hours}h {minutes}m {seconds}s" if hours > 0 else f"{minutes}m {seconds}s"
+        )
 
         console.print(f"  Total Requests: [bold #10B981]{total_requests}[/]")
         console.print(f"  Total Thinking Tokens: [bold #F59E0B]{thinking_tokens:,}[/]")
@@ -104,15 +115,29 @@ class StatsCommand(Command):
         # Reprompting section
         if reprompting_requests > 0:
             console.print(f"  [dim #9CA3AF]Reprompting Statistics:[/]")
-            console.print(f"  Reprompting Requests: [bold #F59E0B]{reprompting_requests}[/]")
-            console.print(f"  Reprompting Tokens: [bold #F59E0B]{reprompting_tokens:,}[/]")
-            console.print(f"  Reprompting Time: [bold #F59E0B]{reprompting_time:.2f}s[/]")
-            console.print(f"  Avg Tokens/Reprompt: [bold #F59E0B]{reprompting_tokens / reprompting_requests:.1f}[/]")
+            console.print(
+                f"  Reprompting Requests: [bold #F59E0B]{reprompting_requests}[/]"
+            )
+            console.print(
+                f"  Reprompting Tokens: [bold #F59E0B]{reprompting_tokens:,}[/]"
+            )
+            console.print(
+                f"  Reprompting Time: [bold #F59E0B]{reprompting_time:.2f}s[/]"
+            )
+            console.print(
+                f"  Avg Tokens/Reprompt: [bold #F59E0B]{reprompting_tokens / reprompting_requests:.1f}[/]"
+            )
             console.print()
 
-        console.print(f"  Avg Thinking Tokens/Request: [bold #F59E0B]{avg_thinking_tokens:,.1f}[/]")
-        console.print(f"  Avg Response Tokens/Request: [bold #3B82F6]{avg_response_tokens:,.1f}[/]")
-        console.print(f"  Avg Total Tokens/Request: [bold #8B5CF6]{avg_total_tokens:,.1f}[/]")
+        console.print(
+            f"  Avg Thinking Tokens/Request: [bold #F59E0B]{avg_thinking_tokens:,.1f}[/]"
+        )
+        console.print(
+            f"  Avg Response Tokens/Request: [bold #3B82F6]{avg_response_tokens:,.1f}[/]"
+        )
+        console.print(
+            f"  Avg Total Tokens/Request: [bold #8B5CF6]{avg_total_tokens:,.1f}[/]"
+        )
         console.print(f"  Avg Time/Request: [bold #EC4899]{avg_time:.2f}s[/]")
         console.print()
 
@@ -129,7 +154,9 @@ class StatsCommand(Command):
         console.print()
 
         # Create table
-        table = Table(show_header=True, header_style="bold #3B82F6", border_style="#374151")
+        table = Table(
+            show_header=True, header_style="bold #3B82F6", border_style="#374151"
+        )
         table.add_column("Model", style="#E5E7EB", no_wrap=True)
         table.add_column("Requests", justify="right", style="#10B981")
         table.add_column("Think Tokens", justify="right", style="#F59E0B")
@@ -140,18 +167,22 @@ class StatsCommand(Command):
 
         # Add rows for each model
         for model_name, stats in all_stats.items():
-            thinking_tokens = stats.get('total_thinking_tokens', 0)
-            response_tokens = stats.get('total_response_tokens', 0)
+            thinking_tokens = stats.get("total_thinking_tokens", 0)
+            response_tokens = stats.get("total_response_tokens", 0)
             total_tokens = thinking_tokens + response_tokens
-            total_time = stats.get('total_time_seconds', 0.0)
-            total_requests = stats.get('total_requests', 0)
-            reprompting_tokens = stats.get('reprompting_tokens', 0)
+            total_time = stats.get("total_time_seconds", 0.0)
+            total_requests = stats.get("total_requests", 0)
+            reprompting_tokens = stats.get("reprompting_tokens", 0)
 
             # Format time
             hours = int(total_time // 3600)
             minutes = int((total_time % 3600) // 60)
             seconds = int(total_time % 60)
-            time_str = f"{hours}h {minutes}m {seconds}s" if hours > 0 else f"{minutes}m {seconds}s"
+            time_str = (
+                f"{hours}h {minutes}m {seconds}s"
+                if hours > 0
+                else f"{minutes}m {seconds}s"
+            )
 
             # Format reprompting
             reprompt_str = f"{reprompting_tokens:,}" if reprompting_tokens > 0 else "-"
@@ -163,7 +194,7 @@ class StatsCommand(Command):
                 f"{response_tokens:,}",
                 f"{total_tokens:,}",
                 reprompt_str,
-                time_str
+                time_str,
             )
 
         console.print(table)
@@ -179,15 +210,17 @@ class StatsCommand(Command):
         global_reprompting_requests = 0
 
         for model_name, stats in all_stats.items():
-            global_thinking_tokens += stats.get('total_thinking_tokens', 0)
-            global_response_tokens += stats.get('total_response_tokens', 0)
-            global_reprompting_tokens += stats.get('reprompting_tokens', 0)
-            global_total_time += stats.get('total_time_seconds', 0.0)
-            global_reprompting_time += stats.get('reprompting_time_seconds', 0.0)
-            global_requests += stats.get('total_requests', 0)
-            global_reprompting_requests += stats.get('reprompting_requests', 0)
+            global_thinking_tokens += stats.get("total_thinking_tokens", 0)
+            global_response_tokens += stats.get("total_response_tokens", 0)
+            global_reprompting_tokens += stats.get("reprompting_tokens", 0)
+            global_total_time += stats.get("total_time_seconds", 0.0)
+            global_reprompting_time += stats.get("reprompting_time_seconds", 0.0)
+            global_requests += stats.get("total_requests", 0)
+            global_reprompting_requests += stats.get("reprompting_requests", 0)
 
-        global_total_tokens = global_thinking_tokens + global_response_tokens + global_reprompting_tokens
+        global_total_tokens = (
+            global_thinking_tokens + global_response_tokens + global_reprompting_tokens
+        )
         grand_total_time = global_total_time + global_reprompting_time
 
         # Display global statistics header
@@ -199,22 +232,34 @@ class StatsCommand(Command):
 
         # Display global stats with separators
         console.print(f"  [dim #9CA3AF]─── Thinking ───[/]")
-        console.print(f"  Total Thinking Tokens: [bold #F59E0B]{global_thinking_tokens:,}[/]")
+        console.print(
+            f"  Total Thinking Tokens: [bold #F59E0B]{global_thinking_tokens:,}[/]"
+        )
         console.print()
 
         console.print(f"  [dim #9CA3AF]─── Response ───[/]")
-        console.print(f"  Total Response Tokens: [bold #3B82F6]{global_response_tokens:,}[/]")
+        console.print(
+            f"  Total Response Tokens: [bold #3B82F6]{global_response_tokens:,}[/]"
+        )
         console.print()
 
         if global_reprompting_tokens > 0:
             console.print(f"  [dim #9CA3AF]─── Reprompting ───[/]")
-            console.print(f"  Total Reprompting Tokens: [bold #F59E0B]{global_reprompting_tokens:,}[/]")
-            console.print(f"  Total Reprompting Requests: [bold #F59E0B]{global_reprompting_requests}[/]")
+            console.print(
+                f"  Total Reprompting Tokens: [bold #F59E0B]{global_reprompting_tokens:,}[/]"
+            )
+            console.print(
+                f"  Total Reprompting Requests: [bold #F59E0B]{global_reprompting_requests}[/]"
+            )
             # Format reprompting time
             rep_hours = int(global_reprompting_time // 3600)
             rep_minutes = int((global_reprompting_time % 3600) // 60)
             rep_seconds = int(global_reprompting_time % 60)
-            rep_time_str = f"{rep_hours}h {rep_minutes}m {rep_seconds}s" if rep_hours > 0 else f"{rep_minutes}m {rep_seconds}s"
+            rep_time_str = (
+                f"{rep_hours}h {rep_minutes}m {rep_seconds}s"
+                if rep_hours > 0
+                else f"{rep_minutes}m {rep_seconds}s"
+            )
             console.print(f"  Total Reprompting Time: [bold #F59E0B]{rep_time_str}[/]")
             console.print()
 
@@ -222,31 +267,51 @@ class StatsCommand(Command):
         console.print()
 
         # Grand totals
-        console.print(f"  [bold #8B5CF6]GRAND TOTAL TOKENS:[/] [bold #8B5CF6]{global_total_tokens:,}[/]")
-        console.print(f"    • Thinking: [#F59E0B]{global_thinking_tokens:,}[/] ([dim]{global_thinking_tokens / global_total_tokens * 100:.1f}%[/])")
-        console.print(f"    • Response: [#3B82F6]{global_response_tokens:,}[/] ([dim]{global_response_tokens / global_total_tokens * 100:.1f}%[/])")
+        console.print(
+            f"  [bold #8B5CF6]GRAND TOTAL TOKENS:[/] [bold #8B5CF6]{global_total_tokens:,}[/]"
+        )
+        console.print(
+            f"    • Thinking: [#F59E0B]{global_thinking_tokens:,}[/] ([dim]{global_thinking_tokens / global_total_tokens * 100:.1f}%[/])"
+        )
+        console.print(
+            f"    • Response: [#3B82F6]{global_response_tokens:,}[/] ([dim]{global_response_tokens / global_total_tokens * 100:.1f}%[/])"
+        )
         if global_reprompting_tokens > 0:
-            console.print(f"    • Reprompting: [#F59E0B]{global_reprompting_tokens:,}[/] ([dim]{global_reprompting_tokens / global_total_tokens * 100:.1f}%[/])")
+            console.print(
+                f"    • Reprompting: [#F59E0B]{global_reprompting_tokens:,}[/] ([dim]{global_reprompting_tokens / global_total_tokens * 100:.1f}%[/])"
+            )
         console.print()
 
         # Format grand total time
         grand_hours = int(grand_total_time // 3600)
         grand_minutes = int((grand_total_time % 3600) // 60)
         grand_seconds = int(grand_total_time % 60)
-        grand_time_str = f"{grand_hours}h {grand_minutes}m {grand_seconds}s" if grand_hours > 0 else f"{grand_minutes}m {grand_seconds}s"
+        grand_time_str = (
+            f"{grand_hours}h {grand_minutes}m {grand_seconds}s"
+            if grand_hours > 0
+            else f"{grand_minutes}m {grand_seconds}s"
+        )
 
         # Format inference time (excluding reprompting)
         inf_hours = int(global_total_time // 3600)
         inf_minutes = int((global_total_time % 3600) // 60)
         inf_seconds = int(global_total_time % 60)
-        inf_time_str = f"{inf_hours}h {inf_minutes}m {inf_seconds}s" if inf_hours > 0 else f"{inf_minutes}m {inf_seconds}s"
+        inf_time_str = (
+            f"{inf_hours}h {inf_minutes}m {inf_seconds}s"
+            if inf_hours > 0
+            else f"{inf_minutes}m {inf_seconds}s"
+        )
 
-        console.print(f"  [bold #EC4899]GRAND TOTAL TIME:[/] [bold #EC4899]{grand_time_str}[/]")
+        console.print(
+            f"  [bold #EC4899]GRAND TOTAL TIME:[/] [bold #EC4899]{grand_time_str}[/]"
+        )
         console.print(f"    • Inference: [#EC4899]{inf_time_str}[/]")
         if global_reprompting_time > 0:
             console.print(f"    • Reprompting: [#F59E0B]{rep_time_str}[/]")
         console.print()
 
         # Additional metrics
-        console.print(f"  [dim #9CA3AF]Total Requests: {global_requests} | Avg Tokens/Request: {global_total_tokens / global_requests:.1f}[/]")
+        console.print(
+            f"  [dim #9CA3AF]Total Requests: {global_requests} | Avg Tokens/Request: {global_total_tokens / global_requests:.1f}[/]"
+        )
         console.print()

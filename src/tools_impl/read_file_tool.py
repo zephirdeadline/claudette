@@ -17,17 +17,17 @@ class ReadFileTool(Tool):
                 "properties": {
                     "file_path": {
                         "type": "string",
-                        "description": "Path to the file to read"
+                        "description": "Path to the file to read",
                     }
                 },
-                "required": ["file_path"]
-            }
+                "required": ["file_path"],
+            },
         )
 
     def execute(self, file_path: str) -> str:
         """Read and return file contents"""
         try:
-            with open(file_path, 'r', encoding='utf-8') as f:
+            with open(file_path, "r", encoding="utf-8") as f:
                 content = f.read()
             return f"File content of {file_path}:\n\n{content}"
         except FileNotFoundError:

@@ -24,7 +24,7 @@ class ToolExecutor:
         self.require_confirmation = require_confirmation
         self.tool_registry = ToolRegistry(
             require_confirmation=require_confirmation,
-            get_confirmation_callback=self._get_confirmation
+            get_confirmation_callback=self._get_confirmation,
         )
         self.tools_definition = self.tool_registry.get_tools_definition()
 
@@ -57,9 +57,13 @@ class ToolExecutor:
             console.print(detail_text)
 
         session = PromptSession()
-        confirmation = session.prompt(HTML('<ansi color="#9CA3AF">    Allow? (Y/n): </ansi>')).strip().lower()
+        confirmation = (
+            session.prompt(HTML('<ansi color="#9CA3AF">    Allow? (Y/n): </ansi>'))
+            .strip()
+            .lower()
+        )
         # Default to 'yes' if user just presses Enter
-        return confirmation in ['', 'y', 'yes']
+        return confirmation in ["", "y", "yes"]
 
     def execute_tool(self, tool_name: str, arguments: Dict[str, Any]) -> str:
         """

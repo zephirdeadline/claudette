@@ -26,7 +26,7 @@ class StatsManager:
     def _read_stats(self) -> Dict[str, Any]:
         """Read stats from YAML file"""
         try:
-            with open(self.stats_file, 'r', encoding='utf-8') as f:
+            with open(self.stats_file, "r", encoding="utf-8") as f:
                 stats = yaml.safe_load(f)
                 return stats if stats else {}
         except Exception:
@@ -35,12 +35,25 @@ class StatsManager:
     def _write_stats(self, stats: Dict[str, Any]):
         """Write stats to YAML file"""
         try:
-            with open(self.stats_file, 'w', encoding='utf-8') as f:
-                yaml.dump(stats, f, default_flow_style=False, allow_unicode=True, sort_keys=False)
+            with open(self.stats_file, "w", encoding="utf-8") as f:
+                yaml.dump(
+                    stats,
+                    f,
+                    default_flow_style=False,
+                    allow_unicode=True,
+                    sort_keys=False,
+                )
         except Exception as e:
             print(f"Warning: Failed to write stats: {e}")
 
-    def update_stats(self, model_name: str, thinking_tokens: int, response_tokens: int, time_seconds: float, is_reprompting: bool = False):
+    def update_stats(
+        self,
+        model_name: str,
+        thinking_tokens: int,
+        response_tokens: int,
+        time_seconds: float,
+        is_reprompting: bool = False,
+    ):
         """
         Update statistics for a model
 
@@ -56,34 +69,34 @@ class StatsManager:
         # Initialize model stats if not exists
         if model_name not in stats:
             stats[model_name] = {
-                'total_thinking_tokens': 0,
-                'total_response_tokens': 0,
-                'total_time_seconds': 0.0,
-                'total_requests': 0,
-                'reprompting_tokens': 0,
-                'reprompting_requests': 0,
-                'reprompting_time_seconds': 0.0
+                "total_thinking_tokens": 0,
+                "total_response_tokens": 0,
+                "total_time_seconds": 0.0,
+                "total_requests": 0,
+                "reprompting_tokens": 0,
+                "reprompting_requests": 0,
+                "reprompting_time_seconds": 0.0,
             }
 
         # Ensure reprompting fields exist for backward compatibility
-        if 'reprompting_tokens' not in stats[model_name]:
-            stats[model_name]['reprompting_tokens'] = 0
-        if 'reprompting_requests' not in stats[model_name]:
-            stats[model_name]['reprompting_requests'] = 0
-        if 'reprompting_time_seconds' not in stats[model_name]:
-            stats[model_name]['reprompting_time_seconds'] = 0.0
+        if "reprompting_tokens" not in stats[model_name]:
+            stats[model_name]["reprompting_tokens"] = 0
+        if "reprompting_requests" not in stats[model_name]:
+            stats[model_name]["reprompting_requests"] = 0
+        if "reprompting_time_seconds" not in stats[model_name]:
+            stats[model_name]["reprompting_time_seconds"] = 0.0
 
         # Update stats
-        stats[model_name]['total_thinking_tokens'] += thinking_tokens
-        stats[model_name]['total_response_tokens'] += response_tokens
-        stats[model_name]['total_time_seconds'] += time_seconds
-        stats[model_name]['total_requests'] += 1
+        stats[model_name]["total_thinking_tokens"] += thinking_tokens
+        stats[model_name]["total_response_tokens"] += response_tokens
+        stats[model_name]["total_time_seconds"] += time_seconds
+        stats[model_name]["total_requests"] += 1
 
         # Track reprompting separately
         if is_reprompting:
-            stats[model_name]['reprompting_tokens'] += response_tokens
-            stats[model_name]['reprompting_requests'] += 1
-            stats[model_name]['reprompting_time_seconds'] += time_seconds
+            stats[model_name]["reprompting_tokens"] += response_tokens
+            stats[model_name]["reprompting_requests"] += 1
+            stats[model_name]["reprompting_time_seconds"] += time_seconds
 
         # Write back to file
         self._write_stats(stats)

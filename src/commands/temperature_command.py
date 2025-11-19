@@ -13,12 +13,14 @@ class TemperatureCommand(Command):
         super().__init__(
             name="temperature",
             description="Set the model temperature (0.0 to 2.0)",
-            usage="/temperature <value>"
+            usage="/temperature <value>",
         )
 
     def execute(self, chatbot, args):
         if not args:
-            ui.show_error(f"Current temperature: {chatbot.temperature}\nUsage: /temperature <value> (0.0 to 2.0)")
+            ui.show_error(
+                f"Current temperature: {chatbot.temperature}\nUsage: /temperature <value> (0.0 to 2.0)"
+            )
             return None
 
         try:

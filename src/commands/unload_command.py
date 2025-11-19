@@ -13,7 +13,7 @@ class UnloadCommand(Command):
         super().__init__(
             name="unload",
             description="Unload the current model from VRAM",
-            usage="/unload"
+            usage="/unload",
         )
 
     def execute(self, chatbot, args):

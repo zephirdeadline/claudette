@@ -19,7 +19,7 @@ def extract_and_validate_images(text: str) -> List[str]:
         List of base64 encoded images
     """
     # Pattern for file paths
-    pattern = r'(?:^|\s)([./~]?[^\s]*\.(?:jpg|jpeg|png|gif|bmp|webp))(?:\s|$)'
+    pattern = r"(?:^|\s)([./~]?[^\s]*\.(?:jpg|jpeg|png|gif|bmp|webp))(?:\s|$)"
 
     potential_paths = re.findall(pattern, text, re.IGNORECASE)
 
@@ -31,7 +31,14 @@ def extract_and_validate_images(text: str) -> List[str]:
         # Validations
         if path.exists() and path.is_file():
             # Verify it's an image
-            if path.suffix.lower() in ['.jpg', '.jpeg', '.png', '.gif', '.bmp', '.webp']:
+            if path.suffix.lower() in [
+                ".jpg",
+                ".jpeg",
+                ".png",
+                ".gif",
+                ".bmp",
+                ".webp",
+            ]:
                 valid_images.append(image_to_base64(str(path.absolute())))
 
     return valid_images
@@ -48,5 +55,5 @@ def image_to_base64(image_path: str) -> str:
         Base64 encoded string of the image
     """
     with open(image_path, "rb") as image_file:
-        encoded = base64.b64encode(image_file.read()).decode('utf-8')
+        encoded = base64.b64encode(image_file.read()).decode("utf-8")
     return encoded

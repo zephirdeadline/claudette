@@ -14,7 +14,7 @@ class LoadCommand(Command):
         super().__init__(
             name="load",
             description="Load a conversation from a file",
-            usage="/load <filename>"
+            usage="/load <filename>",
         )
 
     def execute(self, chatbot, args):

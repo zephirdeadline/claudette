@@ -31,19 +31,19 @@ class EditFileTool(Tool):
                 "properties": {
                     "file_path": {
                         "type": "string",
-                        "description": "Path to the file to edit"
+                        "description": "Path to the file to edit",
                     },
                     "old_content": {
                         "type": "string",
-                        "description": "Content to replace (must match exactly)"
+                        "description": "Content to replace (must match exactly)",
                     },
                     "new_content": {
                         "type": "string",
-                        "description": "New content to insert"
-                    }
+                        "description": "New content to insert",
+                    },
                 },
-                "required": ["file_path", "old_content", "new_content"]
-            }
+                "required": ["file_path", "old_content", "new_content"],
+            },
         )
         self.require_confirmation = require_confirmation
 
@@ -57,15 +57,15 @@ class EditFileTool(Tool):
             new_lines,
             fromfile=f"a/{file_path}",
             tofile=f"b/{file_path}",
-            lineterm=''
+            lineterm="",
         )
 
-        return ''.join(diff)
+        return "".join(diff)
 
     def execute(self, file_path: str, old_content: str, new_content: str) -> str:
         """Edit a file by replacing content"""
         try:
-            with open(file_path, 'r', encoding='utf-8') as f:
+            with open(file_path, "r", encoding="utf-8") as f:
                 content = f.read()
 
             if old_content not in content:
@@ -89,7 +89,9 @@ class EditFileTool(Tool):
 
                 # Display diff with syntax highlighting
                 if diff_output:
-                    syntax = Syntax(diff_output, "diff", theme="monokai", line_numbers=False)
+                    syntax = Syntax(
+                        diff_output, "diff", theme="monokai", line_numbers=False
+                    )
                     console.print(Panel(syntax, border_style="#F59E0B", padding=(0, 1)))
                 else:
                     console.print("  [dim]No differences detected[/dim]")
@@ -98,13 +100,19 @@ class EditFileTool(Tool):
 
                 # Get confirmation
                 session = PromptSession()
-                confirmation = session.prompt(HTML('<ansi color="#9CA3AF">    Allow? (Y/n): </ansi>')).strip().lower()
+                confirmation = (
+                    session.prompt(
+                        HTML('<ansi color="#9CA3AF">    Allow? (Y/n): </ansi>')
+                    )
+                    .strip()
+                    .lower()
+                )
 
-                if confirmation not in ['', 'y', 'yes']:
+                if confirmation not in ["", "y", "yes"]:
                     return "File edit cancelled by user."
 
             # Write the new content
-            with open(file_path, 'w', encoding='utf-8') as f:
+            with open(file_path, "w", encoding="utf-8") as f:
                 f.write(new_file_content)
 
             # Return success with diff

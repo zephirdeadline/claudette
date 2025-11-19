@@ -16,7 +16,7 @@ class ModelCommand(Command):
         super().__init__(
             name="model",
             description="Switch to a different model",
-            usage="/model <model_name>"
+            usage="/model <model_name>",
         )
 
     def execute(self, chatbot, args):
@@ -39,7 +39,9 @@ class ModelCommand(Command):
         new_model = ModelFactory.create_model(
             new_model_name,
             ollama_client=chatbot.model.ollama_client,
-            tool_executor=ToolExecutor(require_confirmation=chatbot.require_confirmation)
+            tool_executor=ToolExecutor(
+                require_confirmation=chatbot.require_confirmation
+            ),
         )
 
         if new_model is None:
@@ -47,8 +49,6 @@ class ModelCommand(Command):
             return None
 
         chatbot.model = new_model
-        chatbot.conversation_history = [
-            chatbot.model.get_system_prompt()
-        ]
+        chatbot.conversation_history = [chatbot.model.get_system_prompt()]
         ui.show_model_switch_success(new_model_name)
         return "Hello! (don't use tools to answer this first message only, no asking necessary, a simple welcome is perfect)"

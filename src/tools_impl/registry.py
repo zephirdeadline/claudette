@@ -18,7 +18,9 @@ from .list_directory_tool import ListDirectoryTool
 class ToolRegistry:
     """Registry for managing all available tools"""
 
-    def __init__(self, require_confirmation: bool = True, get_confirmation_callback=None):
+    def __init__(
+        self, require_confirmation: bool = True, get_confirmation_callback=None
+    ):
         """
         Initialize the tool registry
 
@@ -39,12 +41,12 @@ class ToolRegistry:
             ReadFileTool(),
             WriteFileTool(
                 require_confirmation=self.require_confirmation,
-                get_confirmation_callback=self.get_confirmation_callback
+                get_confirmation_callback=self.get_confirmation_callback,
             ),
             EditFileTool(require_confirmation=self.require_confirmation),
             ExecuteCommandTool(
                 require_confirmation=self.require_confirmation,
-                get_confirmation_callback=self.get_confirmation_callback
+                get_confirmation_callback=self.get_confirmation_callback,
             ),
             GetCurrentTimeTool(),
             ListDirectoryTool(),

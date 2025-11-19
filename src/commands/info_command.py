@@ -13,7 +13,7 @@ class InfoCommand(Command):
         super().__init__(
             name="info",
             description="Show information about a model",
-            usage="/info <model_name>"
+            usage="/info <model_name>",
         )
 
     def execute(self, chatbot, args):

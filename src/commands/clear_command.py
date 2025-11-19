@@ -11,9 +11,7 @@ class ClearCommand(Command):
 
     def __init__(self):
         super().__init__(
-            name="clear",
-            description="Clear the conversation history",
-            usage="/clear"
+            name="clear", description="Clear the conversation history", usage="/clear"
         )
 
     def execute(self, chatbot, args):

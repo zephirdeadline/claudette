@@ -37,6 +37,7 @@ WARNING_COLOR = "#F59E0B"  # Amber
 # Initialize tokenizer (using cl100k_base encoding which is used by GPT-4 and similar models)
 _tokenizer = None
 
+
 def get_token_count(text: str) -> int:
     """Count the number of tokens in a text string"""
     global _tokenizer
@@ -55,13 +56,14 @@ def get_token_count(text: str) -> int:
 
 def serialize_message_for_tokens(message: dict) -> str:
     """Serialize a message to a string representation for token counting"""
+
     def default_serializer(obj):
         """Custom serializer for non-JSON-serializable objects"""
-        if hasattr(obj, 'function'):
+        if hasattr(obj, "function"):
             return {
                 "function": {
                     "name": obj.function.name,
-                    "arguments": obj.function.arguments
+                    "arguments": obj.function.arguments,
                 }
             }
         return str(obj)
@@ -137,18 +139,22 @@ def show_welcome(model: "Model", host: str, ollama_models_available: list):
     info_grid.add_row("HOST", host)
     info_grid.add_row("VISION", vision_status)
 
-    console.print(Panel(
-        Align.center(info_grid),
-        box=box.ROUNDED,
-        border_style=f"dim {TEXT_SECONDARY}",
-        padding=(1, 4)
-    ))
+    console.print(
+        Panel(
+            Align.center(info_grid),
+            box=box.ROUNDED,
+            border_style=f"dim {TEXT_SECONDARY}",
+            padding=(1, 4),
+        )
+    )
 
     # Available models - complete list with aligned table
     # Get all models from Ollama and from config
     ollama_model_names = set()
     if len(ollama_models_available.models) > 0:
-        ollama_model_names = {model_info.model for model_info in ollama_models_available.models}
+        ollama_model_names = {
+            model_info.model for model_info in ollama_models_available.models
+        }
 
     configured_models = set(ModelFactory.get_available_models())
 
@@ -157,18 +163,34 @@ def show_welcome(model: "Model", host: str, ollama_models_available: list):
 
     if len(all_models) > 0:
         models_header = Text()
-        models_header.append(f"MODELS ({len(all_models)})", style=f"bold {TEXT_SECONDARY}")
+        models_header.append(
+            f"MODELS ({len(all_models)})", style=f"bold {TEXT_SECONDARY}"
+        )
         console.print(Align.center(models_header))
         console.print()
 
         # Create aligned table with status indicator and capabilities
-        models_table = Table(show_header=False, show_edge=False, pad_edge=False, box=None, padding=(0, 2))
-        models_table.add_column(style=f"{TEXT_PRIMARY}", justify="left", no_wrap=True)  # Model name
-        models_table.add_column(style=f"dim {TEXT_SECONDARY}", justify="right", width=6, no_wrap=True)  # Size
-        models_table.add_column(style=f"{TEXT_PRIMARY}", justify="left", width=2, no_wrap=True)  # Vision
-        models_table.add_column(style=f"{TEXT_PRIMARY}", justify="left", width=2, no_wrap=True)  # Tools
-        models_table.add_column(style=f"{TEXT_PRIMARY}", justify="left", width=2, no_wrap=True)  # Thinking
-        models_table.add_column(style=f"{TEXT_PRIMARY}", justify="center", width=2, no_wrap=True)  # Status
+        models_table = Table(
+            show_header=False, show_edge=False, pad_edge=False, box=None, padding=(0, 2)
+        )
+        models_table.add_column(
+            style=f"{TEXT_PRIMARY}", justify="left", no_wrap=True
+        )  # Model name
+        models_table.add_column(
+            style=f"dim {TEXT_SECONDARY}", justify="right", width=6, no_wrap=True
+        )  # Size
+        models_table.add_column(
+            style=f"{TEXT_PRIMARY}", justify="left", width=2, no_wrap=True
+        )  # Vision
+        models_table.add_column(
+            style=f"{TEXT_PRIMARY}", justify="left", width=2, no_wrap=True
+        )  # Tools
+        models_table.add_column(
+            style=f"{TEXT_PRIMARY}", justify="left", width=2, no_wrap=True
+        )  # Thinking
+        models_table.add_column(
+            style=f"{TEXT_PRIMARY}", justify="center", width=2, no_wrap=True
+        )  # Status
 
         # Sort models alphabetically
         for model_name in sorted(all_models):
@@ -183,21 +205,40 @@ def show_welcome(model: "Model", host: str, ollama_models_available: list):
             if in_ollama:
                 for model_info in ollama_models_available.models:
                     if model_info.model == model_name:
-                        size = model_info.details.parameter_size if hasattr(model_info, 'details') and hasattr(model_info.details, 'parameter_size') else ""
+                        size = (
+                            model_info.details.parameter_size
+                            if hasattr(model_info, "details")
+                            and hasattr(model_info.details, "parameter_size")
+                            else ""
+                        )
 
                         # Get capabilities from Ollama
                         try:
                             model_data = model.ollama_client.show(model_name)
-                            capabilities = model_data.get('capabilities', [])
+                            capabilities = model_data.get("capabilities", [])
 
                             # Check for vision
-                            vision_icon = "👀" if 'vision' in capabilities else " ·"
+                            vision_icon = "👀" if "vision" in capabilities else " ·"
 
                             # Check for tools
-                            tools_icon = "🔧" if ('tools' in capabilities or 'function_calling' in capabilities) else "·"
+                            tools_icon = (
+                                "🔧"
+                                if (
+                                    "tools" in capabilities
+                                    or "function_calling" in capabilities
+                                )
+                                else "·"
+                            )
 
                             # Check for thinking (reasoning)
-                            thinking_icon = "🧠" if ('reasoning' in capabilities or 'thinking' in capabilities) else "·"
+                            thinking_icon = (
+                                "🧠"
+                                if (
+                                    "reasoning" in capabilities
+                                    or "thinking" in capabilities
+                                )
+                                else "·"
+                            )
 
                         except Exception:
                             vision_icon = " ·"
@@ -232,12 +273,27 @@ def show_welcome(model: "Model", host: str, ollama_models_available: list):
                 status_color = TEXT_SECONDARY
 
             # Create individual Text objects for each cell
-            vision_text = Text(vision_icon, style=SUCCESS_COLOR if vision_icon == "👁️" else "dim #6B7280")
-            tools_text = Text(tools_icon, style=SUCCESS_COLOR if tools_icon == "🔧" else "dim #6B7280")
-            thinking_text = Text(thinking_icon, style=SUCCESS_COLOR if thinking_icon == "🧠" else "dim #6B7280")
+            vision_text = Text(
+                vision_icon,
+                style=SUCCESS_COLOR if vision_icon == "👁️" else "dim #6B7280",
+            )
+            tools_text = Text(
+                tools_icon, style=SUCCESS_COLOR if tools_icon == "🔧" else "dim #6B7280"
+            )
+            thinking_text = Text(
+                thinking_icon,
+                style=SUCCESS_COLOR if thinking_icon == "🧠" else "dim #6B7280",
+            )
             status_text = Text(status_indicator, style=status_color)
 
-            models_table.add_row(f"  · {model_name}", size, vision_text, tools_text, thinking_text, status_text)
+            models_table.add_row(
+                f"  · {model_name}",
+                size,
+                vision_text,
+                tools_text,
+                thinking_text,
+                status_text,
+            )
 
         console.print(Align.center(models_table))
 
@@ -278,7 +334,7 @@ def show_welcome(model: "Model", host: str, ollama_models_available: list):
             "edit_file": "edit",
             "execute_command": "shell",
             "get_current_time": "time",
-            "list_directory": "ls"
+            "list_directory": "ls",
         }
 
         tool_names = []
@@ -339,53 +395,134 @@ def show_welcome(model: "Model", host: str, ollama_models_available: list):
     console.print(f"{'─' * console.width}", style=f"dim {TEXT_SECONDARY}")
     console.print()
 
-def show_thinking(full_content: str, live: Live, start_time: float, thinking_content: str = ""):
+
+def show_thinking(
+    full_content: str, live: Live, start_time: float, thinking_content: str = ""
+):
     """Display thinking indicator while processing"""
     elapsed = time.time() - start_time
 
     # Extensive list of thinking/processing words
     thinking_words = [
         # Cognitive processes
-        "pondering", "reasoning", "analyzing", "processing",
-        "contemplating", "considering", "evaluating", "reflecting",
-        "computing", "synthesizing", "deliberating", "examining",
-        "inferring", "deducing", "interpreting", "assessing",
-        "theorizing", "hypothesizing", "conceptualizing", "formulating",
-
+        "pondering",
+        "reasoning",
+        "analyzing",
+        "processing",
+        "contemplating",
+        "considering",
+        "evaluating",
+        "reflecting",
+        "computing",
+        "synthesizing",
+        "deliberating",
+        "examining",
+        "inferring",
+        "deducing",
+        "interpreting",
+        "assessing",
+        "theorizing",
+        "hypothesizing",
+        "conceptualizing",
+        "formulating",
         # Mental activities
-        "cogitating", "ruminating", "meditating", "musing",
-        "speculating", "surmising", "calculating", "reckoning",
-        "discerning", "perceiving", "comprehending", "understanding",
-        "grasping", "apprehending", "fathoming", "deciphering",
-
+        "cogitating",
+        "ruminating",
+        "meditating",
+        "musing",
+        "speculating",
+        "surmising",
+        "calculating",
+        "reckoning",
+        "discerning",
+        "perceiving",
+        "comprehending",
+        "understanding",
+        "grasping",
+        "apprehending",
+        "fathoming",
+        "deciphering",
         # Analytical processes
-        "dissecting", "parsing", "scrutinizing", "investigating",
-        "exploring", "probing", "studying", "researching",
-        "surveying", "reviewing", "inspecting", "auditing",
-        "diagnosing", "troubleshooting", "debugging", "profiling",
-
+        "dissecting",
+        "parsing",
+        "scrutinizing",
+        "investigating",
+        "exploring",
+        "probing",
+        "studying",
+        "researching",
+        "surveying",
+        "reviewing",
+        "inspecting",
+        "auditing",
+        "diagnosing",
+        "troubleshooting",
+        "debugging",
+        "profiling",
         # Creative processes
-        "ideating", "brainstorming", "innovating", "devising",
-        "crafting", "designing", "architecting", "constructing",
-        "composing", "authoring", "drafting", "sketching",
-        "prototyping", "modeling", "simulating", "envisioning",
-
+        "ideating",
+        "brainstorming",
+        "innovating",
+        "devising",
+        "crafting",
+        "designing",
+        "architecting",
+        "constructing",
+        "composing",
+        "authoring",
+        "drafting",
+        "sketching",
+        "prototyping",
+        "modeling",
+        "simulating",
+        "envisioning",
         # Decision-making
-        "weighing", "judging", "determining", "resolving",
-        "deciding", "choosing", "selecting", "prioritizing",
-        "optimizing", "refining", "tuning", "calibrating",
-        "balancing", "harmonizing", "reconciling", "integrating",
-
+        "weighing",
+        "judging",
+        "determining",
+        "resolving",
+        "deciding",
+        "choosing",
+        "selecting",
+        "prioritizing",
+        "optimizing",
+        "refining",
+        "tuning",
+        "calibrating",
+        "balancing",
+        "harmonizing",
+        "reconciling",
+        "integrating",
         # Data processing
-        "aggregating", "collating", "indexing", "cataloging",
-        "organizing", "structuring", "formatting", "transforming",
-        "mapping", "filtering", "sorting", "ranking",
-        "clustering", "classifying", "categorizing", "tagging",
-
+        "aggregating",
+        "collating",
+        "indexing",
+        "cataloging",
+        "organizing",
+        "structuring",
+        "formatting",
+        "transforming",
+        "mapping",
+        "filtering",
+        "sorting",
+        "ranking",
+        "clustering",
+        "classifying",
+        "categorizing",
+        "tagging",
         # Learning & adaptation
-        "learning", "adapting", "evolving", "developing",
-        "growing", "improving", "enhancing", "advancing",
-        "progressing", "maturing", "refining", "perfecting"
+        "learning",
+        "adapting",
+        "evolving",
+        "developing",
+        "growing",
+        "improving",
+        "enhancing",
+        "advancing",
+        "progressing",
+        "maturing",
+        "refining",
+        "perfecting",
     ]
 
     # Pick a random word based on elapsed time to have some variation
@@ -425,10 +562,15 @@ def show_thinking(full_content: str, live: Live, start_time: float, thinking_con
     # Display thinking content if present
     if thinking_content:
         thinking_token_count = get_token_count(thinking_content)
-        thinking_text.append(f" · 🧠 {thinking_token_count} thinking tokens", style=f"bold {WARNING_COLOR}")
+        thinking_text.append(
+            f" · 🧠 {thinking_token_count} thinking tokens",
+            style=f"bold {WARNING_COLOR}",
+        )
 
         # Create a group with header and thinking content preview
-        thinking_preview = thinking_content[-200:] if len(thinking_content) > 200 else thinking_content
+        thinking_preview = (
+            thinking_content[-200:] if len(thinking_content) > 200 else thinking_content
+        )
         thinking_display = Group(
             thinking_text,
             Text(""),
@@ -437,12 +579,13 @@ def show_thinking(full_content: str, live: Live, start_time: float, thinking_con
                 title="[bold]💭 Thinking[/bold]",
                 border_style=f"{WARNING_COLOR}",
                 box=box.ROUNDED,
-                padding=(0, 1)
-            )
+                padding=(0, 1),
+            ),
         )
         live.update(thinking_display)
     else:
         live.update(thinking_text)
+
 
 def render_math_content(content: str) -> str:
     """
@@ -450,9 +593,9 @@ def render_math_content(content: str) -> str:
     Converts LaTeX math expressions to a more readable format.
     """
     # Pattern for inline math $...$
-    inline_pattern = r'\$([^\$]+)\$'
+    inline_pattern = r"\$([^\$]+)\$"
     # Pattern for display math $$...$$
-    display_pattern = r'\$\$([^\$]+)\$\$'
+    display_pattern = r"\$\$([^\$]+)\$\$"
 
     # Replace display math with highlighted blocks
     def replace_display_math(match):
@@ -475,7 +618,9 @@ def render_math_content(content: str) -> str:
     return content
 
 
-def show_response(console: Console, elapsed: float, content: str, thinking_content: str = ""):
+def show_response(
+    console: Console, elapsed: float, content: str, thinking_content: str = ""
+):
     """Display the final response with markdown formatting"""
     # Clean header
     header = Text()
@@ -489,7 +634,10 @@ def show_response(console: Console, elapsed: float, content: str, thinking_conte
     # Show thinking token count if present
     if thinking_content:
         thinking_token_count = get_token_count(thinking_content)
-        header.append(f" · 🧠 {thinking_token_count} thinking tokens", style=f"bold {WARNING_COLOR}")
+        header.append(
+            f" · 🧠 {thinking_token_count} thinking tokens",
+            style=f"bold {WARNING_COLOR}",
+        )
 
     console.print(header)
     console.print()
@@ -498,13 +646,15 @@ def show_response(console: Console, elapsed: float, content: str, thinking_conte
     if thinking_content:
         # Enhance math rendering for thinking content
         enhanced_thinking = render_math_content(thinking_content)
-        console.print(Panel(
-            Markdown(enhanced_thinking, code_theme="monokai"),
-            title="[bold]💭 Thinking Process[/bold]",
-            border_style=f"{WARNING_COLOR}",
-            box=box.ROUNDED,
-            padding=(1, 2)
-        ))
+        console.print(
+            Panel(
+                Markdown(enhanced_thinking, code_theme="monokai"),
+                title="[bold]💭 Thinking Process[/bold]",
+                border_style=f"{WARNING_COLOR}",
+                box=box.ROUNDED,
+                padding=(1, 2),
+            )
+        )
         console.print()
 
     # Enhance math rendering for main content
@@ -515,6 +665,7 @@ def show_response(console: Console, elapsed: float, content: str, thinking_conte
     console.print()
     console.print(f"{'─' * console.width}", style=f"dim {TEXT_SECONDARY}")
     console.print()
+
 
 def show_tool_usage(tool_name: str, tool_args: dict):
     """Display tool usage information"""
@@ -541,7 +692,9 @@ def show_tool_usage(tool_name: str, tool_args: dict):
                 else:
                     display_value = arg_value
                 # Replace newlines with visible indicator
-                display_value = display_value.replace("\n", "↵\n    " + " " * (len(arg_name) + 2))
+                display_value = display_value.replace(
+                    "\n", "↵\n    " + " " * (len(arg_name) + 2)
+                )
                 arg_text.append(f'"{display_value}"', style=f"{WARNING_COLOR}")
             elif isinstance(arg_value, (int, float, bool)):
                 arg_text.append(str(arg_value), style=f"{WARNING_COLOR}")
@@ -557,6 +710,7 @@ def show_tool_usage(tool_name: str, tool_args: dict):
             console.print(arg_text)
 
     console.print()
+
 
 def show_tool_result(result: str):
     """Display tool execution result with partial output preview"""
@@ -585,13 +739,15 @@ def show_tool_result(result: str):
         if is_error:
             output_header.append("    ❌ Error output: ", style=f"bold #EF4444")
         else:
-            output_header.append("    📄 Output preview: ", style=f"bold {ACCENT_COLOR}")
+            output_header.append(
+                "    📄 Output preview: ", style=f"bold {ACCENT_COLOR}"
+            )
         console.print(output_header)
 
         # Prepare output preview
-        result_lines = result.split('\n')
+        result_lines = result.split("\n")
         preview_lines = result_lines[:MAX_LINES]
-        preview_text = '\n'.join(preview_lines)
+        preview_text = "\n".join(preview_lines)
 
         # Truncate if too long
         if len(preview_text) > MAX_PREVIEW_LENGTH:
@@ -603,7 +759,7 @@ def show_tool_result(result: str):
             border_style=f"bold #EF4444" if is_error else f"dim {TEXT_SECONDARY}",
             padding=(0, 1),
             box=box.ROUNDED,
-            style=f"#EF4444" if is_error else ""
+            style=f"#EF4444" if is_error else "",
         )
         console.print(preview_panel)
 
@@ -613,10 +769,16 @@ def show_tool_result(result: str):
         stats_text = Text()
         stats_text.append("    ", style="")
         stats_text.append("📊 ", style=f"{TEXT_SECONDARY}")
-        stats_text.append(f"Total: {total_lines} line(s), {total_chars} character(s)", style=f"dim {TEXT_SECONDARY}")
+        stats_text.append(
+            f"Total: {total_lines} line(s), {total_chars} character(s)",
+            style=f"dim {TEXT_SECONDARY}",
+        )
 
         if total_lines > MAX_LINES:
-            stats_text.append(f" ({total_lines - MAX_LINES} more lines hidden)", style=f"italic dim {TEXT_SECONDARY}")
+            stats_text.append(
+                f" ({total_lines - MAX_LINES} more lines hidden)",
+                style=f"italic dim {TEXT_SECONDARY}",
+            )
 
         console.print(stats_text)
 
@@ -636,7 +798,9 @@ def show_tool_result(result: str):
             # Display URLs
             urls_text = Text()
             urls_text.append("    ", style="")
-            urls_text.append(f"🔗 {len(unique_urls)} URL(s): ", style=f"bold {WARNING_COLOR}")
+            urls_text.append(
+                f"🔗 {len(unique_urls)} URL(s): ", style=f"bold {WARNING_COLOR}"
+            )
             console.print(urls_text)
 
             for url in unique_urls[:5]:  # Limit to 5 URLs to avoid clutter
@@ -647,10 +811,14 @@ def show_tool_result(result: str):
 
             if len(unique_urls) > 5:
                 more_text = Text()
-                more_text.append(f"      ... and {len(unique_urls) - 5} more", style=f"dim {TEXT_SECONDARY}")
+                more_text.append(
+                    f"      ... and {len(unique_urls) - 5} more",
+                    style=f"dim {TEXT_SECONDARY}",
+                )
                 console.print(more_text)
 
     console.print()
+
 
 def show_history(conversation_history: list):
     """Display conversation history"""
@@ -693,7 +861,7 @@ def show_history(conversation_history: list):
                     tool_info.append("    ▸ ", style=f"{WARNING_COLOR}")
 
                     # Handle both object and dict format
-                    if hasattr(tool_call, 'function'):
+                    if hasattr(tool_call, "function"):
                         tool_name = tool_call.function.name
                         tool_args = tool_call.function.arguments
                     else:
@@ -701,7 +869,10 @@ def show_history(conversation_history: list):
                         tool_args = tool_call.get("function", {}).get("arguments", {})
 
                     tool_info.append(f"{tool_name}", style=f"bold {TEXT_PRIMARY}")
-                    tool_info.append(f" {json.dumps(tool_args, ensure_ascii=False)}", style=f"dim {TEXT_SECONDARY}")
+                    tool_info.append(
+                        f" {json.dumps(tool_args, ensure_ascii=False)}",
+                        style=f"dim {TEXT_SECONDARY}",
+                    )
                     console.print(tool_info)
 
         elif role == "tool":
@@ -722,6 +893,7 @@ def show_history(conversation_history: list):
     console.print(f"{'─' * console.width}", style=f"dim {TEXT_SECONDARY}")
     console.print()
 
+
 def show_error(error_msg: str):
     """Display error message"""
     console = Console()
@@ -734,6 +906,7 @@ def show_error(error_msg: str):
     console.print(error_text)
     console.print()
 
+
 def show_clear_confirmation():
     """Display confirmation that history was cleared"""
     console = Console()
@@ -744,6 +917,7 @@ def show_clear_confirmation():
     console.print()
     console.print(clear_text)
     console.print()
+
 
 def show_save_confirmation(filename: str):
     """Display confirmation that conversation was saved"""
@@ -756,6 +930,7 @@ def show_save_confirmation(filename: str):
     console.print()
     console.print(save_text)
     console.print()
+
 
 def show_load_confirmation(filename: str, message_count: int):
     """Display confirmation that conversation was loaded"""
@@ -770,6 +945,7 @@ def show_load_confirmation(filename: str, message_count: int):
     console.print(load_text)
     console.print()
 
+
 def show_goodbye():
     """Display goodbye message"""
     console = Console()
@@ -778,21 +954,28 @@ def show_goodbye():
     console.print(Align.center(goodbye))
     console.print()
 
+
 def show_image_found(image_paths: list, prompt: str):
     """Display information about found images"""
     console = Console()
 
     image_text = Text()
     image_text.append("  ▸ ", style=f"{WARNING_COLOR}")
-    image_text.append(f"vision: {len(image_paths)} image(s) attached", style=f"dim {TEXT_SECONDARY}")
+    image_text.append(
+        f"vision: {len(image_paths)} image(s) attached", style=f"dim {TEXT_SECONDARY}"
+    )
 
     console.print(image_text)
     console.print()
 
+
 def show_model_unload_start():
     """Display model unloading start message"""
     console = Console()
-    console.print(Text("  ⏳ Unloading current model...", style=f"dim {TEXT_SECONDARY}"))
+    console.print(
+        Text("  ⏳ Unloading current model...", style=f"dim {TEXT_SECONDARY}")
+    )
+
 
 def show_model_switch_success(model_name: str):
     """Display model switch success message"""
@@ -804,6 +987,7 @@ def show_model_switch_success(model_name: str):
     console.print(success_text)
     console.print()
 
+
 def show_model_unload_success():
     """Display model unload success message"""
     console = Console()
@@ -813,6 +997,7 @@ def show_model_unload_success():
     console.print()
     console.print(unload_text)
     console.print()
+
 
 def show_pull_start(model_name: str):
     """Display pull start message"""
@@ -824,15 +1009,19 @@ def show_pull_start(model_name: str):
     console.print(pull_text)
     console.print()
 
+
 def show_pull_success(model_name: str):
     """Display pull success message"""
     console = Console()
     success_text = Text()
     success_text.append("  ✓ ", style=f"{SUCCESS_COLOR}")
-    success_text.append(f"Successfully pulled model: {model_name}", style=f"{TEXT_SECONDARY}")
+    success_text.append(
+        f"Successfully pulled model: {model_name}", style=f"{TEXT_SECONDARY}"
+    )
     console.print()
     console.print(success_text)
     console.print()
+
 
 def show_model_info(model_name: str, model_info: dict):
     """Display model information in a formatted panel"""
@@ -850,24 +1039,24 @@ def show_model_info(model_name: str, model_info: dict):
         info_table.add_row("Model", model_name)
 
         # Details section
-        details = model_info.get('details', {})
+        details = model_info.get("details", {})
         if details:
-            if hasattr(details, 'format'):
+            if hasattr(details, "format"):
                 info_table.add_row("Format", details.format.upper())
-            if hasattr(details, 'family'):
+            if hasattr(details, "family"):
                 info_table.add_row("Family", details.family)
-            if hasattr(details, 'parameter_size'):
+            if hasattr(details, "parameter_size"):
                 info_table.add_row("Size", details.parameter_size)
-            if hasattr(details, 'quantization_level'):
+            if hasattr(details, "quantization_level"):
                 info_table.add_row("Quantization", details.quantization_level)
 
         # Model info section - extract context length
-        modelinfo = model_info.get('modelinfo', {})
+        modelinfo = model_info.get("modelinfo", {})
         if modelinfo:
             # Try to get context length from different possible keys
             context_length = None
             for key in modelinfo.keys():
-                if 'context_length' in key:
+                if "context_length" in key:
                     context_length = modelinfo[key]
                     break
 
@@ -882,14 +1071,14 @@ def show_model_info(model_name: str, model_info: dict):
                 info_table.add_row("Context Window", context_str)
 
         # Capabilities section
-        capabilities = model_info.get('capabilities', [])
+        capabilities = model_info.get("capabilities", [])
         if capabilities:
             # Check for vision support
-            has_vision = 'vision' in capabilities
+            has_vision = "vision" in capabilities
             info_table.add_row("Vision Support", "✓ Yes" if has_vision else "✗ No")
 
             # Check for tools/function calling support
-            has_tools = 'tools' in capabilities or 'function_calling' in capabilities
+            has_tools = "tools" in capabilities or "function_calling" in capabilities
             info_table.add_row("Tools Support", "✓ Yes" if has_tools else "✗ No")
 
             # List all capabilities
@@ -897,25 +1086,25 @@ def show_model_info(model_name: str, model_info: dict):
             info_table.add_row("Capabilities", caps_str)
 
         # Modified date
-        if hasattr(model_info, 'modified_at'):
+        if hasattr(model_info, "modified_at"):
             modified_str = model_info.modified_at.strftime("%Y-%m-%d %H:%M")
             info_table.add_row("Modified", modified_str)
 
         # Parameters section - show key parameters
-        parameters = model_info.get('parameters', '')
+        parameters = model_info.get("parameters", "")
         if parameters:
             # Extract temperature
-            temp_match = re.search(r'temperature\s+([\d.]+)', parameters)
+            temp_match = re.search(r"temperature\s+([\d.]+)", parameters)
             if temp_match:
                 info_table.add_row("Temperature", temp_match.group(1))
 
             # Extract top_k
-            top_k_match = re.search(r'top_k\s+([\d]+)', parameters)
+            top_k_match = re.search(r"top_k\s+([\d]+)", parameters)
             if top_k_match:
                 info_table.add_row("Top K", top_k_match.group(1))
 
             # Extract top_p
-            top_p_match = re.search(r'top_p\s+([\d.]+)', parameters)
+            top_p_match = re.search(r"top_p\s+([\d.]+)", parameters)
             if top_p_match:
                 info_table.add_row("Top P", top_p_match.group(1))
 
@@ -926,12 +1115,14 @@ def show_model_info(model_name: str, model_info: dict):
         status_text = Text(config_status, style=status_style)
         info_table.add_row("Claudette Status", status_text)
 
-        console.print(Panel(
-            info_table,
-            title=f"[bold {BRAND_COLOR}]Model Information[/bold {BRAND_COLOR}]",
-            border_style=f"dim {TEXT_SECONDARY}",
-            padding=(1, 2)
-        ))
+        console.print(
+            Panel(
+                info_table,
+                title=f"[bold {BRAND_COLOR}]Model Information[/bold {BRAND_COLOR}]",
+                border_style=f"dim {TEXT_SECONDARY}",
+                padding=(1, 2),
+            )
+        )
         console.print()
 
     except Exception as e:
@@ -1006,22 +1197,22 @@ def show_models_list(models_response: dict):
         header_style=f"bold {BRAND_COLOR}",
         border_style=f"dim {TEXT_SECONDARY}",
         box=box.ROUNDED,
-        padding=(0, 1)
+        padding=(0, 1),
     )
 
     table.add_column("Model Name", style=f"{TEXT_PRIMARY}", no_wrap=False)
     table.add_column("Size", style=f"{TEXT_SECONDARY}", justify="right")
 
     # Add models to table
-    if 'models' in models_response:
+    if "models" in models_response:
         # Sort models by name
-        models = sorted(models_response['models'], key=lambda x: x.get('model', ''))
+        models = sorted(models_response["models"], key=lambda x: x.get("model", ""))
 
         for model in models:
-            name = model.get('model', 'Unknown')
+            name = model.get("model", "Unknown")
 
             # Format size
-            size_bytes = model.get('size', 0)
+            size_bytes = model.get("size", 0)
             if size_bytes >= 1_000_000_000:  # GB
                 size = f"{size_bytes / 1_000_000_000:.1f} GB"
             elif size_bytes >= 1_000_000:  # MB
@@ -1037,8 +1228,11 @@ def show_models_list(models_response: dict):
     # Show total count
     total_text = Text()
     total_text.append(f"  Total: ", style=f"dim {TEXT_SECONDARY}")
-    model_count = len(models_response.get('models', []))
-    total_text.append(f"{model_count} model{'s' if model_count != 1 else ''}", style=f"{TEXT_SECONDARY}")
+    model_count = len(models_response.get("models", []))
+    total_text.append(
+        f"{model_count} model{'s' if model_count != 1 else ''}",
+        style=f"{TEXT_SECONDARY}",
+    )
     console.print(total_text)
     console.print()
 
@@ -1058,7 +1252,9 @@ def show_conversations_list(conversation_files: list):
     if not conversation_files:
         # No conversations found
         no_conv_text = Text()
-        no_conv_text.append("  No saved conversations found.", style=f"dim {TEXT_SECONDARY}")
+        no_conv_text.append(
+            "  No saved conversations found.", style=f"dim {TEXT_SECONDARY}"
+        )
         console.print(no_conv_text)
         console.print()
         return
@@ -1069,7 +1265,7 @@ def show_conversations_list(conversation_files: list):
         header_style=f"bold {BRAND_COLOR}",
         border_style=f"dim {TEXT_SECONDARY}",
         box=box.ROUNDED,
-        padding=(0, 1)
+        padding=(0, 1),
     )
 
     table.add_column("Filename", style=f"{TEXT_PRIMARY}", no_wrap=False)
@@ -1077,13 +1273,15 @@ def show_conversations_list(conversation_files: list):
     table.add_column("Modified", style=f"{TEXT_SECONDARY}")
 
     # Sort conversations by modified date (newest first)
-    conversations = sorted(conversation_files, key=lambda x: x['modified'], reverse=True)
+    conversations = sorted(
+        conversation_files, key=lambda x: x["modified"], reverse=True
+    )
 
     for conv in conversations:
-        name = conv['name']
+        name = conv["name"]
 
         # Format size
-        size_bytes = conv['size']
+        size_bytes = conv["size"]
         if size_bytes >= 1_000_000:  # MB
             size = f"{size_bytes / 1_000_000:.1f} MB"
         elif size_bytes >= 1_000:  # KB
@@ -1092,9 +1290,9 @@ def show_conversations_list(conversation_files: list):
             size = f"{size_bytes} B"
 
         # Format modified date
-        modified_timestamp = conv['modified']
+        modified_timestamp = conv["modified"]
         dt = datetime.fromtimestamp(modified_timestamp)
-        modified = dt.strftime('%Y-%m-%d %H:%M:%S')
+        modified = dt.strftime("%Y-%m-%d %H:%M:%S")
 
         table.add_row(name, size, modified)
 
@@ -1105,7 +1303,10 @@ def show_conversations_list(conversation_files: list):
     total_text = Text()
     total_text.append(f"  Total: ", style=f"dim {TEXT_SECONDARY}")
     conv_count = len(conversation_files)
-    total_text.append(f"{conv_count} conversation{'s' if conv_count != 1 else ''}", style=f"{TEXT_SECONDARY}")
+    total_text.append(
+        f"{conv_count} conversation{'s' if conv_count != 1 else ''}",
+        style=f"{TEXT_SECONDARY}",
+    )
     console.print(total_text)
 
     # Usage hint
@@ -1158,7 +1359,10 @@ def show_reprompting_change(reprompting_enabled: bool):
         console.print()
         info_text = Text()
         info_text.append("  ℹ️  ", style=f"{TEXT_SECONDARY}")
-        info_text.append("Your messages will be automatically rewritten for better LLM comprehension", style=f"dim {TEXT_SECONDARY}")
+        info_text.append(
+            "Your messages will be automatically rewritten for better LLM comprehension",
+            style=f"dim {TEXT_SECONDARY}",
+        )
         console.print(info_text)
     else:
         reprompting_text.append("Reprompting mode ", style=f"{TEXT_SECONDARY}")
@@ -1213,7 +1417,9 @@ def show_reprompting_animation(content: str, live: Live, start_time: float):
     live.update(reprompt_text)
 
 
-def show_reprompted_message(original: str, reprompted: str, tokens: int = 0, elapsed_time: float = 0.0):
+def show_reprompted_message(
+    original: str, reprompted: str, tokens: int = 0, elapsed_time: float = 0.0
+):
     """Display the original and reprompted messages side by side with token info"""
     console = Console()
     console.print()
@@ -1223,7 +1429,9 @@ def show_reprompted_message(original: str, reprompted: str, tokens: int = 0, ela
     header.append("  ✨ ", style=f"{WARNING_COLOR}")
     header.append("Message reprompted for better clarity", style=f"bold {TEXT_PRIMARY}")
     if tokens > 0:
-        header.append(f" ({tokens} tokens, {elapsed_time:.2f}s)", style=f"dim {TEXT_SECONDARY}")
+        header.append(
+            f" ({tokens} tokens, {elapsed_time:.2f}s)", style=f"dim {TEXT_SECONDARY}"
+        )
     console.print(header)
     console.print()
 
@@ -1233,7 +1441,7 @@ def show_reprompted_message(original: str, reprompted: str, tokens: int = 0, ela
         title="[dim]Original[/dim]",
         border_style=f"dim {TEXT_SECONDARY}",
         box=box.ROUNDED,
-        padding=(0, 1)
+        padding=(0, 1),
     )
     console.print(original_panel)
 
@@ -1248,7 +1456,7 @@ def show_reprompted_message(original: str, reprompted: str, tokens: int = 0, ela
         title="[bold]Optimized[/bold]",
         border_style=f"{WARNING_COLOR}",
         box=box.ROUNDED,
-        padding=(0, 1)
+        padding=(0, 1),
     )
     console.print(reprompted_panel)
 

@@ -13,7 +13,7 @@ class ValidateCommand(Command):
         super().__init__(
             name="validate",
             description="Toggle validation/confirmation mode for tools",
-            usage="/validate"
+            usage="/validate",
         )
 
     def execute(self, chatbot, args):

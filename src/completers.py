@@ -33,26 +33,45 @@ class FilePathCompleter(Completer):
 
         # Common directories to ignore
         ignore_dirs = {
-            '__pycache__', '.git', '.svn', '.hg', 'node_modules',
-            '.venv', 'venv', 'env', '.env', 'dist', 'build',
-            '.pytest_cache', '.mypy_cache', '.tox', 'htmlcov',
-            '.idea', '.vscode', '__MACOSX', '.DS_Store'
+            "__pycache__",
+            ".git",
+            ".svn",
+            ".hg",
+            "node_modules",
+            ".venv",
+            "venv",
+            "env",
+            ".env",
+            "dist",
+            "build",
+            ".pytest_cache",
+            ".mypy_cache",
+            ".tox",
+            "htmlcov",
+            ".idea",
+            ".vscode",
+            "__MACOSX",
+            ".DS_Store",
         }
 
         try:
             for dirpath, dirnames, filenames in os.walk(root_dir):
                 # Remove ignored directories from the walk
-                dirnames[:] = [d for d in dirnames if d not in ignore_dirs and not d.startswith('.')]
+                dirnames[:] = [
+                    d
+                    for d in dirnames
+                    if d not in ignore_dirs and not d.startswith(".")
+                ]
 
                 # Calculate relative path from root
                 rel_dir = os.path.relpath(dirpath, root_dir)
-                if rel_dir == '.':
-                    rel_dir = ''
+                if rel_dir == ".":
+                    rel_dir = ""
 
                 # Add all files in this directory
                 for filename in filenames:
                     # Skip hidden files
-                    if filename.startswith('.'):
+                    if filename.startswith("."):
                         continue
 
                     # Build paths
@@ -107,14 +126,14 @@ class FilePathCompleter(Completer):
         text = document.text_before_cursor
 
         # Only trigger completion if there's an @ symbol
-        if '@' not in text:
+        if "@" not in text:
             return
 
         # Find the last @ position
-        last_at_pos = text.rfind('@')
+        last_at_pos = text.rfind("@")
 
         # Get the text after the last @
-        after_at = text[last_at_pos + 1:]
+        after_at = text[last_at_pos + 1 :]
 
         # Get current working directory
         try:
@@ -171,9 +190,7 @@ class FilePathCompleter(Completer):
                 start_pos = -(len(after_at) + 1)  # +1 to include the @ symbol
 
                 yield Completion(
-                    rel_path,
-                    start_position=start_pos,
-                    display_meta=display_meta
+                    rel_path, start_position=start_pos, display_meta=display_meta
                 )
 
         except Exception:
@@ -211,10 +228,10 @@ class CommandAndFileCompleter(Completer):
         text = document.text_before_cursor
 
         # If text starts with /, provide command completions
-        if text.startswith('/'):
+        if text.startswith("/"):
             # Extract the command part
             words = text.split()
-            if len(words) == 0 or (len(words) == 1 and not text.endswith(' ')):
+            if len(words) == 0 or (len(words) == 1 and not text.endswith(" ")):
                 # Still typing the command
                 command_part = text[1:]  # Remove the /
                 for cmd in self.command_names:
@@ -223,10 +240,10 @@ class CommandAndFileCompleter(Completer):
                         yield Completion(
                             cmd_without_slash,
                             start_position=-len(command_part),
-                            display_meta="command"
+                            display_meta="command",
                         )
 
         # If text contains @, provide file completions
-        elif '@' in text:
+        elif "@" in text:
             # Delegate to file completer
             yield from self.file_completer.get_completions(document, complete_event)

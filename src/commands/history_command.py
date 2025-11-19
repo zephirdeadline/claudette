@@ -13,7 +13,7 @@ class HistoryCommand(Command):
         super().__init__(
             name="history",
             description="Show the conversation history",
-            usage="/history"
+            usage="/history",
         )
 
     def execute(self, chatbot, args):
