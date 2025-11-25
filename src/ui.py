@@ -352,44 +352,28 @@ def show_welcome(model: "Model", host: str, ollama_models_available: list):
         console.print(Align.center(tools_text))
         console.print()
 
-    # Minimal help - Commands in alphabetical order
+    # Minimal help - Commands in alphabetical order (dynamically generated)
+    from .commands.manager import CommandManager
+
+    command_manager = CommandManager()
+    command_names = sorted(command_manager.get_command_names())
+
     help_text = Text()
     help_text.append("Commands: ", style=f"dim {TEXT_SECONDARY}")
-    help_text.append("/clear", style=f"{TEXT_SECONDARY}")
-    help_text.append(" · ", style=f"dim {TEXT_SECONDARY}")
-    help_text.append("/conversations", style=f"{TEXT_SECONDARY}")
-    help_text.append(" · ", style=f"dim {TEXT_SECONDARY}")
-    help_text.append("/exit", style=f"{TEXT_SECONDARY}")
-    help_text.append(" · ", style=f"dim {TEXT_SECONDARY}")
-    help_text.append("/history", style=f"{TEXT_SECONDARY}")
-    help_text.append(" · ", style=f"dim {TEXT_SECONDARY}")
-    help_text.append("/info <name>", style=f"{TEXT_SECONDARY}")
-    help_text.append(" · ", style=f"dim {TEXT_SECONDARY}")
-    help_text.append("/init", style=f"{TEXT_SECONDARY}")
-    help_text.append(" · ", style=f"dim {TEXT_SECONDARY}")
-    help_text.append("/load <name>", style=f"{TEXT_SECONDARY}")
-    help_text.append(" · ", style=f"dim {TEXT_SECONDARY}")
-    help_text.append("/model <name>", style=f"{TEXT_SECONDARY}")
-    help_text.append(" · ", style=f"dim {TEXT_SECONDARY}")
-    help_text.append("/models", style=f"{TEXT_SECONDARY}")
-    help_text.append(" · ", style=f"dim {TEXT_SECONDARY}")
-    help_text.append("/prompt", style=f"{TEXT_SECONDARY}")
-    help_text.append(" · ", style=f"dim {TEXT_SECONDARY}")
-    help_text.append("/pull <name>", style=f"{TEXT_SECONDARY}")
-    help_text.append(" · ", style=f"dim {TEXT_SECONDARY}")
-    help_text.append("/reprompting", style=f"{TEXT_SECONDARY}")
-    help_text.append(" · ", style=f"dim {TEXT_SECONDARY}")
-    help_text.append("/save [name]", style=f"{TEXT_SECONDARY}")
-    help_text.append(" · ", style=f"dim {TEXT_SECONDARY}")
-    help_text.append("/stats", style=f"{TEXT_SECONDARY}")
-    help_text.append(" · ", style=f"dim {TEXT_SECONDARY}")
-    help_text.append("/temperature <value>", style=f"{TEXT_SECONDARY}")
-    help_text.append(" · ", style=f"dim {TEXT_SECONDARY}")
-    help_text.append("/thinking", style=f"{TEXT_SECONDARY}")
-    help_text.append(" · ", style=f"dim {TEXT_SECONDARY}")
-    help_text.append("/unload", style=f"{TEXT_SECONDARY}")
-    help_text.append(" · ", style=f"dim {TEXT_SECONDARY}")
-    help_text.append("/validate", style=f"{TEXT_SECONDARY}")
+
+    for idx, command_name in enumerate(command_names):
+        # Get the command object to check usage
+        cmd = command_manager.get_command(command_name[1:])  # Remove / prefix
+        if cmd and cmd.usage:
+            # Use the full usage (e.g., "/model <name>")
+            help_text.append(cmd.usage, style=f"{TEXT_SECONDARY}")
+        else:
+            # Just use the command name
+            help_text.append(command_name, style=f"{TEXT_SECONDARY}")
+
+        # Add separator unless it's the last command
+        if idx < len(command_names) - 1:
+            help_text.append(" · ", style=f"dim {TEXT_SECONDARY}")
 
     console.print(Align.center(help_text))
     console.print(f"{'─' * console.width}", style=f"dim {TEXT_SECONDARY}")
