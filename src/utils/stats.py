@@ -7,19 +7,20 @@ import yaml
 from pathlib import Path
 from typing import Dict, Any
 
+from .paths import get_stats_path
+
 
 class StatsManager:
     """Manage statistics tracking for model usage"""
 
     def __init__(self):
-        """Initialize the stats manager"""
-        self.stats_dir = Path.home() / ".claudette"
-        self.stats_file = self.stats_dir / "stats.yaml"
+        """Initialize the stats manager using XDG paths"""
+        self.stats_file = get_stats_path()
         self._ensure_stats_file()
 
     def _ensure_stats_file(self):
         """Ensure the stats file exists"""
-        self.stats_dir.mkdir(exist_ok=True)
+        self.stats_file.parent.mkdir(parents=True, exist_ok=True)
         if not self.stats_file.exists():
             self._write_stats({})
 

@@ -1344,6 +1344,19 @@ def show_success(message: str):
     console.print()
 
 
+def show_warning(message: str):
+    """Display a warning message"""
+    console = Console()
+    console.print()
+
+    warning_text = Text()
+    warning_text.append("  ⚠️  ", style=f"bold {WARNING_COLOR}")
+    warning_text.append(message, style=f"{TEXT_PRIMARY}")
+
+    console.print(warning_text)
+    console.print()
+
+
 def show_reprompting_change(reprompting_enabled: bool):
     """Display reprompting mode status change confirmation"""
     console = Console()

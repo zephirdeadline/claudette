@@ -19,7 +19,8 @@ class ConversationsCommand(Command):
 
     def execute(self, chatbot, args):
         try:
-            conversations_dir = ".claudette/conversations"
+            from ..utils.paths import get_conversations_dir
+            conversations_dir = str(get_conversations_dir())
 
             if not os.path.exists(conversations_dir):
                 ui.show_error(f"No conversations directory found: {conversations_dir}")

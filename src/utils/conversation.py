@@ -6,6 +6,7 @@ import os
 import yaml
 from datetime import datetime
 from .. import ui
+from .paths import get_conversations_dir, get_paths
 
 
 def serialize_history(history: list) -> list:
@@ -66,8 +67,8 @@ def save_conversation(conversation_history: list, filename: str = None) -> str |
     Returns:
         Full filepath if successful, None otherwise
     """
-    # Create directory if it doesn't exist
-    conversations_dir = ".claudette/conversations"
+    # Get conversations directory (XDG compliant)
+    conversations_dir = get_conversations_dir()
     os.makedirs(conversations_dir, exist_ok=True)
 
     # Generate filename if not provided
@@ -105,7 +106,7 @@ def load_conversation(filename: str) -> list | None:
     Returns:
         Loaded conversation history as list, or None if failed
     """
-    conversations_dir = ".claudette/conversations"
+    conversations_dir = get_conversations_dir()
 
     # Add .yaml extension if not present
     if not filename.endswith(".yaml"):

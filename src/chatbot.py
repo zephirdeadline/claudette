@@ -213,10 +213,10 @@ Rewritten: "Hello, how are you?" (unchanged - already clear)
             self.command_manager.get_command_names()
         )
 
-        # Setup history file in user's home .claudette directory
-        history_dir: Path = Path.home() / ".claudette"
-        history_dir.mkdir(exist_ok=True)
-        history_file: Path = history_dir / "claudette_history.txt"
+        # Setup history file using XDG paths
+        from .utils.paths import get_history_path
+        history_file: Path = get_history_path()
+        history_file.parent.mkdir(parents=True, exist_ok=True)
 
         # Create key bindings for Enter=submit, Alt+Enter=newline
         kb: KeyBindings = KeyBindings()

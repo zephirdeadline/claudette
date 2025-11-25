@@ -208,6 +208,17 @@ class ListDirectoryTool(Tool):
             Formatted directory listing
         """
         try:
+            # Convert parameters to correct types (in case they come as strings from API)
+            show_hidden = (
+                bool(show_hidden)
+                if isinstance(show_hidden, bool)
+                else show_hidden == "true"
+            )
+            recursive = (
+                bool(recursive) if isinstance(recursive, bool) else recursive == "true"
+            )
+            max_depth = int(max_depth) if not isinstance(max_depth, int) else max_depth
+
             # Resolve path
             target_path = Path(path).resolve()
 

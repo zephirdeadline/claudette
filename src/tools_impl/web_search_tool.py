@@ -4,11 +4,31 @@ Web Search Tool - Search the internet using DuckDuckGo
 
 import requests
 from bs4 import BeautifulSoup
+import os
+
+# Fix fake_useragent issue in PyInstaller builds
+# Set fallback User-Agent before importing DDGS
+os.environ["FAKE_USERAGENT_FALLBACK"] = (
+    "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36"
+)
+
+# Monkey-patch fake_useragent to avoid file loading issues
+try:
+    import fake_useragent
+
+    # Override the UserAgent class to always return our fallback
+    class StaticUserAgent:
+        def __getattr__(self, name):
+            return os.environ.get("FAKE_USERAGENT_FALLBACK", "Mozilla/5.0")
+
+    fake_useragent.UserAgent = StaticUserAgent
+except ImportError:
+    pass
 
 try:
-    from duckduckgo_search import DDGS
+    from ddgs import DDGS  # New package name
 except ImportError:
-    from ddgs import DDGS  # Fallback for older installations
+    from duckduckgo_search import DDGS  # Fallback for legacy installations
 from .base import Tool
 
 
@@ -92,32 +112,14 @@ class WebSearchTool(Tool):
 
         try:
             with DDGS() as ddgs:
-                # Try Instant Answers first (for queries like "current date", "2+2", etc.)
-                try:
-                    instant_answers = list(ddgs.answers(query))
-                    if instant_answers:
-                        formatted_answers = []
-                        for answer in instant_answers:
-                            # Format the instant answer
-                            text = answer.get("text", "")
-                            url = answer.get("url", "")
-                            if text:
-                                formatted_answers.append(f"Instant Answer: {text}")
-                                if url:
-                                    formatted_answers.append(f"Source: {url}")
-
-                        if formatted_answers:
-                            return "\n".join(formatted_answers)
-                except Exception:
-                    # If instant answers fail, continue to regular search
-                    pass
-
-                # Fall back to regular web search
+                # Perform web search
                 try:
                     results = list(ddgs.text(query, max_results=max_results))
-                except (KeyError, AttributeError) as e:
+                except (KeyError, AttributeError, TypeError) as e:
                     # API might have changed, try alternative method
                     return f"Web search temporarily unavailable (API error: {str(e)}). Please try again later or rephrase your query."
+                except Exception as e:
+                    return f"Web search error: {type(e).__name__}: {str(e)}"
 
             if not results:
                 return "No results found."
@@ -128,9 +130,13 @@ class WebSearchTool(Tool):
             ]
 
             for i, result in enumerate(results, 1):
-                title = result["title"]
-                url = result["href"]
-                snippet = result["body"]
+                # Safely extract fields (API format may vary)
+                title = result.get("title", "No title")
+                url = result.get("href", result.get("url", "No URL"))
+                snippet = result.get(
+                    "body",
+                    result.get("snippet", result.get("description", "No description")),
+                )
 
                 formatted_results.append(f"\n{'=' * 80}")
                 formatted_results.append(f"Result #{i}: {title}")

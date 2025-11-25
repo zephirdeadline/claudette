@@ -118,6 +118,95 @@ class Model:
         return False
 
     @staticmethod
+    def _parse_function_call_text(content: str) -> dict | None:
+        """
+        Parse function calls from text like: web_search('query') or execute_command("ls")
+
+        Returns:
+            dict with 'function' key containing 'name' and 'arguments', or None if not found
+        """
+        import re
+
+        # Pattern to match function calls: function_name('arg') or function_name("arg")
+        # Supports single or double quotes, and handles escaped quotes
+        pattern = r"(\w+)\s*\(\s*['\"]([^'\"]*)['\"](?:\s*,\s*(\{.*?\}))?\s*\)"
+
+        matches = re.finditer(pattern, content, re.DOTALL)
+
+        for match in matches:
+            func_name = match.group(1)
+            arg = match.group(2)
+
+            # Common tool names to look for
+            tool_names = [
+                "web_search",
+                "execute_command",
+                "read_file",
+                "write_file",
+                "edit_file",
+                "list_directory",
+                "ask_user",
+                "get_current_time",
+            ]
+
+            if func_name in tool_names:
+                # Build arguments based on function
+                if func_name == "web_search":
+                    arguments = {"query": arg}
+                elif func_name == "execute_command":
+                    arguments = {"command": arg}
+                elif func_name == "read_file":
+                    arguments = {"file_path": arg}
+                elif func_name == "write_file":
+                    arguments = {
+                        "file_path": arg,
+                        "content": "",
+                    }  # Will need refinement
+                elif func_name == "edit_file":
+                    arguments = {"file_path": arg}  # Will need old_string, new_string
+                elif func_name == "list_directory":
+                    arguments = {"path": arg}
+                elif func_name == "ask_user":
+                    arguments = {"question": arg}
+                else:
+                    arguments = {}
+
+                return {"function": {"name": func_name, "arguments": arguments}}
+
+        return None
+
+    @staticmethod
+    def _find_json_blocks(content: str) -> list[str]:
+        """
+        Find all potential JSON blocks in content by matching braces.
+        Returns list of JSON string candidates.
+        """
+        json_blocks = []
+        i = 0
+        while i < len(content):
+            if content[i] == "{":
+                # Found opening brace, find matching closing brace
+                brace_count = 1
+                j = i + 1
+                while j < len(content) and brace_count > 0:
+                    if content[j] == "{":
+                        brace_count += 1
+                    elif content[j] == "}":
+                        brace_count -= 1
+                    j += 1
+
+                if brace_count == 0:
+                    # Found matching closing brace
+                    json_blocks.append(content[i:j])
+                    i = j
+                else:
+                    i += 1
+            else:
+                i += 1
+
+        return json_blocks
+
+    @staticmethod
     def _parse_json_tool_call(content: str) -> dict | None:
         """
         Parse JSON tool call from content when model generates JSON instead of using tool_calls.
@@ -146,7 +235,30 @@ class Model:
 
             return {"function": {"name": tool_name, "arguments": arguments}}
 
-        # Try to parse as JSON
+        # Find all JSON blocks in the content
+        json_blocks = Model._find_json_blocks(content)
+
+        # Try to parse each JSON block
+        for json_str in json_blocks:
+            try:
+                parsed = json.loads(json_str)
+
+                # Check if it looks like a tool call (has 'name' and 'arguments' keys)
+                if (
+                    isinstance(parsed, dict)
+                    and "name" in parsed
+                    and "arguments" in parsed
+                ):
+                    return {
+                        "function": {
+                            "name": parsed["name"],
+                            "arguments": parsed["arguments"],
+                        }
+                    }
+            except (json.JSONDecodeError, KeyError):
+                continue
+
+        # Fallback: Try to parse the whole content as JSON (for code blocks)
         try:
             # Remove markdown code blocks if present
             json_str = content.strip()
@@ -258,15 +370,23 @@ class Model:
                 enable_thinking=enable_thinking,
             ):
                 message = chunk.get("message", {})
+
+                # Check for content
                 if content := message.get("content"):
                     full_content += content
                     ui.show_thinking(full_content, live, start_time, thinking_content)
-                elif thinking := message.get("thinking"):
+
+                # Check for thinking (independent of content)
+                if thinking := message.get("thinking"):
                     thinking_content += thinking
                     ui.show_thinking(full_content, live, start_time, thinking_content)
-                elif message.get("tool_calls"):
+
+                # Check for tool calls (independent of content/thinking)
+                if message.get("tool_calls"):
                     tool_calls = message["tool_calls"]
-                else:
+
+                # Update UI even if nothing new
+                if not content and not thinking and not message.get("tool_calls"):
                     ui.show_thinking(full_content, live, start_time, thinking_content)
 
             # Check if we got a response or just endless thinking
@@ -305,10 +425,30 @@ class Model:
 
             # If no native tool_calls but content looks like a JSON tool call, parse it
             if not tool_calls and full_content and self.tool_executor:
+                # Try parsing JSON format first
                 parsed_tool = self._parse_json_tool_call(full_content)
                 if parsed_tool:
+                    ui.show_warning(
+                        f"⚠️  Model used raw JSON instead of native tool calling. Parsing fallback applied."
+                    )
                     tool_calls = [parsed_tool]
                     full_content = ""  # Clear content since it was a tool call
+                else:
+                    # Try parsing function call text format: web_search('query')
+                    parsed_tool = self._parse_function_call_text(full_content)
+                    if parsed_tool:
+                        ui.show_warning(
+                            f"⚠️  Model wrote function call as text instead of using native tool calling. Parsing fallback applied."
+                        )
+                        tool_calls = [parsed_tool]
+                        # Remove the function call from content but keep explanation text
+                        import re
+
+                        # Remove patterns like: web_search('query') or execute_command("cmd")
+                        cleaned_content = re.sub(
+                            r'\b\w+\s*\(\s*[\'"][^\'"]*[\'"]\s*\)', "", full_content
+                        ).strip()
+                        full_content = cleaned_content if cleaned_content else ""
 
             # Create the complete message for history
             assistant_message = self.get_assistant_message(full_content, tool_calls)
@@ -403,13 +543,13 @@ class ModelFactory:
     @staticmethod
     def _load_config(name: str) -> dict | None:
         """Load model configuration from YAML file and merge with common prompts"""
-        # Try to find the config file in current directory first, then in home directory
-        possible_paths = [
-            os.path.join(".claudette", "models_config.yaml"),
-            os.path.join(os.path.expanduser("~"), ".claudette", "models_config.yaml"),
-        ]
+        # Use XDG-compliant path resolution
+        from .utils.paths import get_models_config_path
 
-        for config_path in possible_paths:
+        config_path = str(get_models_config_path())
+
+        # Only try this one path (it already handles the hierarchy)
+        for config_path in [config_path]:
             try:
                 with open(config_path, "r", encoding="utf-8") as f:
                     config = yaml.safe_load(f)
@@ -554,13 +694,13 @@ class ModelFactory:
     def get_available_models() -> list[str]:
         """Get list of available model names from config"""
 
-        # Try to find the config file in current directory first, then in home directory
-        possible_paths = [
-            os.path.join(".claudette", "models_config.yaml"),
-            os.path.join(os.path.expanduser("~"), ".claudette", "models_config.yaml"),
-        ]
+        # Use XDG-compliant path resolution
+        from .utils.paths import get_models_config_path
 
-        for config_path in possible_paths:
+        config_path = str(get_models_config_path())
+
+        # Only try this one path (it already handles the hierarchy)
+        for config_path in [config_path]:
             try:
                 with open(config_path, "r", encoding="utf-8") as f:
                     config = yaml.safe_load(f)

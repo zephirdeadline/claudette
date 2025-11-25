@@ -1,0 +1,249 @@
+.PHONY: help install install-dev clean build run test lint format \
+        install-dist uninstall-dist install-pypi build-pypi publish-pypi \
+        install-deb build-deb install-rpm build-rpm size all
+
+# Variables
+PYTHON := python3
+PIP := pip3
+APP_NAME := claudette
+MAIN_SCRIPT := main.py
+DIST_DIR := dist
+BUILD_DIR := build
+SPEC_FILE := $(APP_NAME).spec
+VERSION := $(shell grep "^version" pyproject.toml | cut -d'"' -f2)
+
+# Directories
+CONFIG_DIR := $(HOME)/.config/claudette
+DATA_DIR := $(HOME)/.local/share/claudette
+SYSTEM_CONFIG_DIR := /etc/claudette
+
+# Colors for terminal output
+RED := \033[0;31m
+GREEN := \033[0;32m
+YELLOW := \033[0;33m
+BLUE := \033[0;34m
+NC := \033[0m # No Color
+
+help: ## Show this help message
+	@echo "$(GREEN)╔═══════════════════════════════════════════════════════╗$(NC)"
+	@echo "$(GREEN)║        Claudette - Build & Distribution Tasks        ║$(NC)"
+	@echo "$(GREEN)╚═══════════════════════════════════════════════════════╝$(NC)"
+	@echo ""
+	@echo "$(BLUE)Development:$(NC)"
+	@grep -E '^[a-zA-Z_-]+:.*?## .*$$' $(MAKEFILE_LIST) | awk 'BEGIN {FS = ":.*?## "}; {printf "  $(YELLOW)%-20s$(NC) %s\n", $$1, $$2}'
+	@echo ""
+
+# ═══════════════════════════════════════════════════════════════
+# Development Tasks
+# ═══════════════════════════════════════════════════════════════
+
+install: ## Install dependencies (development mode)
+	@echo "$(GREEN)Installing dependencies...$(NC)"
+	$(PIP) install -r requirements.txt
+
+install-dev: ## Install with dev dependencies (editable mode)
+	@echo "$(GREEN)Installing in development mode with dev dependencies...$(NC)"
+	$(PIP) install -e ".[dev]"
+
+run: ## Run the application from source
+	@echo "$(GREEN)Running Claudette from source...$(NC)"
+	$(PYTHON) $(MAIN_SCRIPT)
+
+clean: ## Clean build artifacts
+	@echo "$(YELLOW)Cleaning build artifacts...$(NC)"
+	rm -rf $(DIST_DIR) $(BUILD_DIR) __pycache__ src/__pycache__
+	rm -rf *.egg-info claudette.egg-info
+	rm -f $(SPEC_FILE)
+	find . -type d -name "__pycache__" -exec rm -rf {} + 2>/dev/null || true
+	find . -type f -name "*.pyc" -delete
+	find . -type d -name "*.egg-info" -exec rm -rf {} + 2>/dev/null || true
+	rm -rf packaging/deb/claudette_* packaging/rpm/RPMS packaging/rpm/SRPMS
+	@echo "$(GREEN)Clean complete!$(NC)"
+
+lint: ## Run linters (flake8, mypy)
+	@echo "$(GREEN)Running linters...$(NC)"
+	flake8 src/ main.py --max-line-length=88 --extend-ignore=E203,W503 || true
+	mypy src/ main.py || true
+
+format: ## Format code with black and isort
+	@echo "$(GREEN)Formatting code...$(NC)"
+	black main.py src/
+	isort main.py src/
+
+test: ## Run tests (if any)
+	@echo "$(GREEN)Running tests...$(NC)"
+	pytest tests/ -v || echo "$(YELLOW)No tests found$(NC)"
+
+# ═══════════════════════════════════════════════════════════════
+# Binary Distribution (PyInstaller)
+# ═══════════════════════════════════════════════════════════════
+
+build: clean ## Build distributable binary with PyInstaller
+	@echo "$(GREEN)Building Claudette binary distributable...$(NC)"
+	$(PIP) install pyinstaller 2>/dev/null || true
+	pyinstaller --onefile \
+		--name $(APP_NAME) \
+		--add-data "src:src" \
+		--hidden-import=ollama \
+		--hidden-import=rich \
+		--hidden-import=prompt_toolkit \
+		--hidden-import=yaml \
+		--hidden-import=tiktoken \
+		--hidden-import=colorama \
+		--collect-all tiktoken \
+		--collect-all rich \
+		--collect-all prompt_toolkit \
+		--clean \
+		$(MAIN_SCRIPT)
+	@echo "$(GREEN)✓ Build complete! Binary: $(DIST_DIR)/$(APP_NAME)$(NC)"
+
+build-debug: clean ## Build with debug console
+	@echo "$(GREEN)Building Claudette (debug mode)...$(NC)"
+	pyinstaller --onefile \
+		--name $(APP_NAME)-debug \
+		--add-data "src:src" \
+		--hidden-import=ollama \
+		--hidden-import=rich \
+		--hidden-import=prompt_toolkit \
+		--hidden-import=yaml \
+		--hidden-import=tiktoken \
+		--hidden-import=colorama \
+		--collect-all tiktoken \
+		--collect-all rich \
+		--collect-all prompt_toolkit \
+		--debug all \
+		$(MAIN_SCRIPT)
+	@echo "$(GREEN)Debug build complete!$(NC)"
+
+run-dist: ## Run the built distributable
+	@echo "$(GREEN)Running Claudette from distributable...$(NC)"
+	@if [ -f "$(DIST_DIR)/$(APP_NAME)" ]; then \
+		./$(DIST_DIR)/$(APP_NAME); \
+	else \
+		echo "$(RED)Error: Distributable not found. Run 'make build' first.$(NC)"; \
+		exit 1; \
+	fi
+
+install-dist: build setup-user-dirs ## Build and install binary to /usr/local/bin
+	@echo "$(GREEN)Installing Claudette to /usr/local/bin...$(NC)"
+	sudo cp $(DIST_DIR)/$(APP_NAME) /usr/local/bin/
+	sudo chmod +x /usr/local/bin/$(APP_NAME)
+	@echo "$(GREEN)✓ Installation complete! Run 'claudette' from anywhere.$(NC)"
+
+uninstall-dist: ## Remove installed binary
+	@echo "$(YELLOW)Removing Claudette from /usr/local/bin...$(NC)"
+	sudo rm -f /usr/local/bin/$(APP_NAME)
+	@echo "$(GREEN)Uninstall complete!$(NC)"
+
+size: ## Show binary size
+	@if [ -f "$(DIST_DIR)/$(APP_NAME)" ]; then \
+		echo "$(GREEN)Binary size:$(NC)"; \
+		du -h $(DIST_DIR)/$(APP_NAME); \
+	else \
+		echo "$(RED)Error: Distributable not found. Run 'make build' first.$(NC)"; \
+	fi
+
+# ═══════════════════════════════════════════════════════════════
+# Python Package Distribution (PyPI)
+# ═══════════════════════════════════════════════════════════════
+
+build-pypi: clean ## Build Python package (wheel and sdist)
+	@echo "$(GREEN)Building Python package...$(NC)"
+	$(PIP) install build twine 2>/dev/null || true
+	$(PYTHON) -m build
+	@echo "$(GREEN)✓ Package built: $(DIST_DIR)/$(APP_NAME)-$(VERSION).tar.gz$(NC)"
+	@echo "$(GREEN)✓ Wheel built: $(DIST_DIR)/$(APP_NAME)-$(VERSION)-py3-none-any.whl$(NC)"
+
+install-pypi: build-pypi ## Install from built package
+	@echo "$(GREEN)Installing from built package...$(NC)"
+	$(PIP) install $(DIST_DIR)/$(APP_NAME)-$(VERSION)-py3-none-any.whl
+	@make setup-user-dirs
+
+publish-pypi-test: build-pypi ## Publish to TestPyPI
+	@echo "$(YELLOW)Publishing to TestPyPI...$(NC)"
+	twine upload --repository testpypi $(DIST_DIR)/*
+	@echo "$(GREEN)✓ Published to TestPyPI$(NC)"
+	@echo "Install with: pip install --index-url https://test.pypi.org/simple/ claudette"
+
+publish-pypi: build-pypi ## Publish to PyPI (PRODUCTION!)
+	@echo "$(RED)⚠ Publishing to PRODUCTION PyPI!$(NC)"
+	@read -p "Are you sure? [y/N] " -n 1 -r; \
+	echo; \
+	if [[ $$REPLY =~ ^[Yy]$$ ]]; then \
+		twine upload $(DIST_DIR)/*; \
+		echo "$(GREEN)✓ Published to PyPI$(NC)"; \
+		echo "Install with: pip install claudette"; \
+	else \
+		echo "$(YELLOW)Cancelled.$(NC)"; \
+	fi
+
+# ═══════════════════════════════════════════════════════════════
+# Debian Package (.deb)
+# ═══════════════════════════════════════════════════════════════
+
+build-deb: build ## Build Debian package
+	@echo "$(GREEN)Building Debian package...$(NC)"
+	@./packaging/deb/build.sh
+	@echo "$(GREEN)✓ Debian package built in packaging/deb/$(NC)"
+
+install-deb: build-deb ## Install Debian package
+	@echo "$(GREEN)Installing Debian package...$(NC)"
+	sudo dpkg -i packaging/deb/claudette_$(VERSION)_amd64.deb || sudo apt-get install -f -y
+	@echo "$(GREEN)✓ Debian package installed$(NC)"
+
+# ═══════════════════════════════════════════════════════════════
+# RPM Package (.rpm)
+# ═══════════════════════════════════════════════════════════════
+
+build-rpm: build ## Build RPM package
+	@echo "$(GREEN)Building RPM package...$(NC)"
+	@./packaging/rpm/build.sh
+	@echo "$(GREEN)✓ RPM package built in packaging/rpm/RPMS/$(NC)"
+
+install-rpm: build-rpm ## Install RPM package
+	@echo "$(GREEN)Installing RPM package...$(NC)"
+	sudo rpm -i packaging/rpm/RPMS/x86_64/claudette-$(VERSION)-1.x86_64.rpm
+	@echo "$(GREEN)✓ RPM package installed$(NC)"
+
+# ═══════════════════════════════════════════════════════════════
+# Configuration & User Directories
+# ═══════════════════════════════════════════════════════════════
+
+setup-user-dirs: ## Setup user configuration and data directories
+	@echo "$(GREEN)Setting up user directories...$(NC)"
+	@mkdir -p $(CONFIG_DIR)
+	@mkdir -p $(DATA_DIR)/conversations
+	@if [ ! -f $(CONFIG_DIR)/models_config.yaml ]; then \
+		echo "Creating default config..."; \
+		cp config/default_models_config.yaml $(CONFIG_DIR)/models_config.yaml 2>/dev/null || \
+		echo "$(YELLOW)Warning: default config not found$(NC)"; \
+	fi
+	@echo "$(GREEN)✓ User directories setup complete$(NC)"
+	@echo "  Config: $(CONFIG_DIR)"
+	@echo "  Data:   $(DATA_DIR)"
+
+setup-system-config: ## Setup system-wide configuration (requires sudo)
+	@echo "$(GREEN)Setting up system configuration...$(NC)"
+	@sudo mkdir -p $(SYSTEM_CONFIG_DIR)
+	@if [ -f config/default_models_config.yaml ]; then \
+		sudo cp config/default_models_config.yaml $(SYSTEM_CONFIG_DIR)/models_config.yaml; \
+	fi
+	@echo "$(GREEN)✓ System config installed to $(SYSTEM_CONFIG_DIR)$(NC)"
+
+# ═══════════════════════════════════════════════════════════════
+# Utility Tasks
+# ═══════════════════════════════════════════════════════════════
+
+all: clean lint format build test ## Run all checks and build
+
+show-paths: ## Show XDG paths that will be used
+	@echo "$(BLUE)XDG Base Directories:$(NC)"
+	@echo "  XDG_CONFIG_HOME: $${XDG_CONFIG_HOME:-$$HOME/.config}"
+	@echo "  XDG_DATA_HOME:   $${XDG_DATA_HOME:-$$HOME/.local/share}"
+	@echo ""
+	@echo "$(BLUE)Claudette Directories:$(NC)"
+	@echo "  Config: $(CONFIG_DIR)"
+	@echo "  Data:   $(DATA_DIR)"
+	@echo "  System: $(SYSTEM_CONFIG_DIR)"
+
+.DEFAULT_GOAL := help

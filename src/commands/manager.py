@@ -6,8 +6,10 @@ from typing import Dict, List, TYPE_CHECKING
 from .base import Command
 
 # Import all command classes
+from .cd_command import CdCommand
 from .clear_command import ClearCommand
 from .conversations_command import ConversationsCommand
+from .edit_prompt_command import EditPromptCommand
 from .exit_command import ExitCommand, QuitCommand
 from .history_command import HistoryCommand
 from .info_command import InfoCommand
@@ -41,8 +43,10 @@ class CommandManager:
     def _register_commands(self):
         """Register all available commands"""
         commands = [
+            CdCommand(),
             ClearCommand(),
             ConversationsCommand(),
+            EditPromptCommand(),
             ExitCommand(),
             QuitCommand(),
             HistoryCommand(),

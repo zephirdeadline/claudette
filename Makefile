@@ -36,20 +36,36 @@ clean: ## Clean build artifacts
 
 build: clean ## Build distributable binary with PyInstaller
 	@echo "$(GREEN)Building Claudette distributable...$(NC)"
-	pyinstaller --onefile \
-		--name $(APP_NAME) \
-		--add-data "src:src" \
-		--hidden-import=ollama \
-		--hidden-import=rich \
-		--hidden-import=prompt_toolkit \
-		--hidden-import=yaml \
-		--hidden-import=tiktoken \
-		--hidden-import=colorama \
-		--collect-all tiktoken \
-		--collect-all rich \
-		--collect-all prompt_toolkit \
-		--clean \
-		$(MAIN_SCRIPT)
+	@if [ -f "$(SPEC_FILE)" ]; then \
+		echo "$(YELLOW)Using existing spec file: $(SPEC_FILE)$(NC)"; \
+		pyinstaller --clean $(SPEC_FILE); \
+	else \
+		echo "$(YELLOW)No spec file found, creating one...$(NC)"; \
+		pyinstaller --onefile \
+			--name $(APP_NAME) \
+			--add-data "src:src" \
+			--hidden-import=ollama \
+			--hidden-import=rich \
+			--hidden-import=prompt_toolkit \
+			--hidden-import=yaml \
+			--hidden-import=tiktoken \
+			--hidden-import=colorama \
+			--hidden-import=ddgs \
+			--hidden-import=requests \
+			--hidden-import=bs4 \
+			--hidden-import=urllib3 \
+			--hidden-import=certifi \
+			--collect-all tiktoken \
+			--collect-all rich \
+			--collect-all prompt_toolkit \
+			--collect-all ddgs \
+			--collect-all requests \
+			--collect-all bs4 \
+			--collect-all urllib3 \
+			--collect-all certifi \
+			--clean \
+			$(MAIN_SCRIPT); \
+	fi
 	@echo "$(GREEN)Build complete! Binary located at: $(DIST_DIR)/$(APP_NAME)$(NC)"
 
 build-debug: clean ## Build with debug console (useful for troubleshooting)
@@ -63,9 +79,21 @@ build-debug: clean ## Build with debug console (useful for troubleshooting)
 		--hidden-import=yaml \
 		--hidden-import=tiktoken \
 		--hidden-import=colorama \
+		--hidden-import=ddgs \
+		--hidden-import=requests \
+		--hidden-import=bs4 \
+		--hidden-import=urllib3 \
+		--hidden-import=certifi \
+		--hidden-import=fake_useragent \
 		--collect-all tiktoken \
 		--collect-all rich \
 		--collect-all prompt_toolkit \
+		--collect-all ddgs \
+		--collect-all requests \
+		--collect-all bs4 \
+		--collect-all urllib3 \
+		--collect-all certifi \
+		--collect-all fake_useragent \
 		--debug all \
 		$(MAIN_SCRIPT)
 	@echo "$(GREEN)Debug build complete!$(NC)"
