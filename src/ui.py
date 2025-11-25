@@ -148,7 +148,9 @@ def show_welcome(model: "Model", host: str, ollama_models_available: list):
         )
     )
 
-    # Available models - complete list with aligned table
+    # Create 2-column layout: Models on left, Commands on right
+    from .commands.manager import CommandManager
+
     # Get all models from Ollama and from config
     ollama_model_names = set()
     if len(ollama_models_available.models) > 0:
@@ -161,13 +163,26 @@ def show_welcome(model: "Model", host: str, ollama_models_available: list):
     # Combine both sets to show all models
     all_models = ollama_model_names | configured_models
 
+    # Prepare commands
+    command_manager = CommandManager()
+    command_names = sorted(command_manager.get_command_names())
+
     if len(all_models) > 0:
+        # Create main 2-column grid
+        main_grid = Table.grid(padding=(0, 4))
+        main_grid.add_column(justify="left")  # Models column
+        main_grid.add_column(justify="left")  # Commands column
+
+        # ============ LEFT COLUMN: MODELS ============
+        models_section = Table.grid(padding=0)
+        models_section.add_column()
+
         models_header = Text()
         models_header.append(
             f"MODELS ({len(all_models)})", style=f"bold {TEXT_SECONDARY}"
         )
-        console.print(Align.center(models_header))
-        console.print()
+        models_section.add_row(models_header)
+        models_section.add_row("")  # Spacing
 
         # Create aligned table with status indicator and capabilities
         models_table = Table(
@@ -275,7 +290,7 @@ def show_welcome(model: "Model", host: str, ollama_models_available: list):
             # Create individual Text objects for each cell
             vision_text = Text(
                 vision_icon,
-                style=SUCCESS_COLOR if vision_icon == "👁️" else "dim #6B7280",
+                style=SUCCESS_COLOR if vision_icon == "👀" else "dim #6B7280",
             )
             tools_text = Text(
                 tools_icon, style=SUCCESS_COLOR if tools_icon == "🔧" else "dim #6B7280"
@@ -295,29 +310,62 @@ def show_welcome(model: "Model", host: str, ollama_models_available: list):
                 status_text,
             )
 
-        console.print(Align.center(models_table))
+        models_section.add_row(models_table)
+        models_section.add_row("")  # Spacing
 
         # Legend for status indicators and capabilities
         legend_status = Text()
-        legend_status.append("  ", style="")
+        legend_status.append("", style="")
         legend_status.append("✓", style=SUCCESS_COLOR)
         legend_status.append(" Ready  ", style=f"dim {TEXT_SECONDARY}")
         legend_status.append("⚠ ", style=WARNING_COLOR)
-        legend_status.append(" Missing config  ", style=f"dim {TEXT_SECONDARY}")
+        legend_status.append(" Config  ", style=f"dim {TEXT_SECONDARY}")
         legend_status.append("✗", style="red")
-        legend_status.append(" Not in Ollama", style=f"dim {TEXT_SECONDARY}")
-        console.print(Align.center(legend_status))
+        legend_status.append(" Missing", style=f"dim {TEXT_SECONDARY}")
+        models_section.add_row(legend_status)
 
         # Legend for capabilities
         legend_caps = Text()
-        legend_caps.append("  ", style="")
-        legend_caps.append("👁️", style=SUCCESS_COLOR)
+        legend_caps.append("", style="")
+        legend_caps.append("👀", style=SUCCESS_COLOR)
         legend_caps.append(" Vision  ", style=f"dim {TEXT_SECONDARY}")
         legend_caps.append("🔧", style=SUCCESS_COLOR)
         legend_caps.append(" Tools  ", style=f"dim {TEXT_SECONDARY}")
         legend_caps.append("🧠", style=SUCCESS_COLOR)
         legend_caps.append(" Thinking", style=f"dim {TEXT_SECONDARY}")
-        console.print(Align.center(legend_caps))
+        models_section.add_row(legend_caps)
+
+        # ============ RIGHT COLUMN: COMMANDS ============
+        commands_section = Table.grid(padding=0)
+        commands_section.add_column()
+
+        commands_header = Text()
+        commands_header.append("COMMANDS", style=f"bold {TEXT_SECONDARY}")
+        commands_section.add_row(commands_header)
+        commands_section.add_row("")  # Spacing
+
+        # Create commands table
+        commands_table = Table(
+            show_header=False,
+            show_edge=False,
+            pad_edge=False,
+            box=None,
+            padding=(0, 2),
+        )
+        commands_table.add_column(style=f"{TEXT_SECONDARY}", justify="left")
+
+        # Add commands
+        for command_name in command_names:
+            cmd = command_manager.get_command(command_name[1:])
+            display = cmd.usage if cmd and cmd.usage else command_name
+            commands_table.add_row(f"  {display}")
+
+        commands_section.add_row(commands_table)
+
+        # Add both columns to main grid
+        main_grid.add_row(models_section, commands_section)
+
+        console.print(Align.center(main_grid))
         console.print()
 
     # Tools - horizontal layout (dynamic)
@@ -352,30 +400,7 @@ def show_welcome(model: "Model", host: str, ollama_models_available: list):
         console.print(Align.center(tools_text))
         console.print()
 
-    # Minimal help - Commands in alphabetical order (dynamically generated)
-    from .commands.manager import CommandManager
-
-    command_manager = CommandManager()
-    command_names = sorted(command_manager.get_command_names())
-
-    help_text = Text()
-    help_text.append("Commands: ", style=f"dim {TEXT_SECONDARY}")
-
-    for idx, command_name in enumerate(command_names):
-        # Get the command object to check usage
-        cmd = command_manager.get_command(command_name[1:])  # Remove / prefix
-        if cmd and cmd.usage:
-            # Use the full usage (e.g., "/model <name>")
-            help_text.append(cmd.usage, style=f"{TEXT_SECONDARY}")
-        else:
-            # Just use the command name
-            help_text.append(command_name, style=f"{TEXT_SECONDARY}")
-
-        # Add separator unless it's the last command
-        if idx < len(command_names) - 1:
-            help_text.append(" · ", style=f"dim {TEXT_SECONDARY}")
-
-    console.print(Align.center(help_text))
+    # Separator
     console.print(f"{'─' * console.width}", style=f"dim {TEXT_SECONDARY}")
     console.print()
 
